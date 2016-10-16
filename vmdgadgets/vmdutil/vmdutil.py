@@ -253,6 +253,25 @@ def get_all_position_in_interval(frame_dict, begin, end, element='bones'):
     return result
 
 
+LERP_CONTROLPOINTS = [20, 20, 107, 107]
+PARABOLA1_CONTROLPOINTS = [
+    int(round(x * 127, 0))
+    for outer in vmdbezier.PARABOLA1[1:3] for x in outer]
+PARABOLA2_CONTROLPOINTS = [
+    int(round(x * 127, 0))
+    for outer in vmdbezier.PARABOLA2[1:3] for x in outer]
+SINE1_CONTROLPOINTS = [
+    int(round(x * 127, 0))
+    for outer in
+    [(p[0] / vmdbezier.SINE1[3][0], p[1]) for p in vmdbezier.SINE1[1:3]]
+    for x in outer]
+SINE2_CONTROLPOINTS = [
+    int(round(x * 127, 0))
+    for outer in
+    [(p[0] / vmdbezier.SINE2[3][0], p[1]) for p in vmdbezier.SINE2[1:3]]
+    for x in outer]
+
+
 # in place of numpy
 def dot_v(v1, v2):
     return sum([i * j for i, j in zip(v1, v2)])
