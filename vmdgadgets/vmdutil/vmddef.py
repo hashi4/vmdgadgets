@@ -3,6 +3,7 @@
 from collections import namedtuple
 import struct
 import codecs
+import math
 
 ENCODING = 'shift-jis'
 LEFT = '左'
@@ -70,18 +71,71 @@ def pack_bone(p):
     return bone_def.pack(*expanded)
 
 
-def get_bone_controlpoints(p):
+def bone_vmdformat_to_controlpoints(interpolation):
     '''
         byte[64] -> [
             c1x[X,Y,Z,R], c1y[X,Y,Z,R],
             c2x[X,Y,Z,R], c2y[X,Y,Z,R]
         ]
     '''
-    points = p.interpolation
     pos = [0, 4, 8, 12]
     offset = 16
-    result = [[points[i + offset * j] for j in range(4)] for i in pos]
+    result = [[interpolation[i + offset * j] for j in range(4)] for i in pos]
     return result
+
+BONE_LERP_CONTROLPOINTS = [
+    [20, 20, 20, 20], [20, 20, 20, 20],
+    [107, 107, 107, 107], [107, 107, 107, 107]]
+
+BONE_LERP_INTERPOLATION = (
+    20, 20, 0, 0, 20, 20, 20, 20,
+    107, 107, 107, 107, 107, 107, 107, 107,
+    20, 20, 20, 20, 20, 20, 20,
+    107, 107, 107, 107, 107, 107, 107, 107,
+    0,
+    20, 20, 20, 20, 20, 20,
+    107, 107, 107, 107, 107, 107, 107, 107,
+    0, 0,
+    20, 20, 20, 20, 20,
+    107, 107, 107, 107, 107, 107, 107, 107,
+    0, 0, 0)
+
+
+def bone_controlpoints_to_vmdformat(control_points):
+    '''
+        c1x[X,Y,Z,R], c1y[X,Y,Z,R], c2x[X,Y,Z,R], c2y[X,Y,Z,R]
+        ->
+        c1x[X,Y,   ], 00,00, c1y[X,Y,Z,R],
+        c2x[X,Y,Z,R], c2y[X,Y,Z,R],
+
+        c1x[  Y,Z,R], c1y[X,Y,Z,R],
+        c2x[X,Y,Z,R], c2y[X,Y,Z,R],
+        00,
+        c1x[    Z,R], c1y[X,Y,Z,R],
+        c2x[X,Y,Z,R], c2y[X,Y,Z,R],
+        00, 00,
+        c1x[      R], c1y[X,Y,Z,R],
+        c2x[X,Y,Z,R], c2y[X,Y,Z,R],
+        00,00,00(?),
+    '''
+    result = list()
+    c = control_points
+    c13 = c[1] + c[2] + c[3]
+    result.extend(c[0][:2])
+    result.extend([0, 0] + c13)
+    result.extend(c[0][1:] + c13)
+    result.append(0)
+    result.extend(c[0][2:] + c13)
+    result.extend([0, 0])
+    result.extend(c[0][3:] + c13)
+    result.extend([0, 0, 0])
+    return tuple(result)
+
+
+BONE_SAMPLE = bone(
+    '全ての親'.encode(ENCODING), 0, (0, 0, 0),
+    (0, 0, 0, 1), BONE_LERP_INTERPOLATION)
+
 
 # typedef struct VmdMorphFrame_t {
 #     char name[15];
@@ -129,16 +183,45 @@ def pack_camera(p):
     return camera_def.pack(*expanded)
 
 
-def get_camera_controlpoints(p):
+def camera_vmdformat_to_controlpoints(interpolation):
     '''
         byte[24] -> [
             c1x[X,Y,Z,R,D,V], c1y[X,Y,Z,R,D,V],
             c2x[X,Y,Z,R,D,V], c2y[X,Y,Z,R,D,V]
         ]
     '''
-    points = p.interpolation
-    result = [[points[i * 4 + j] for i in range(6)] for j in range(4)]
+    result = [[interpolation[i * 4 + j] for i in range(6)] for j in range(4)]
     return [result[0], result[2], result[1], result[3]]
+
+
+CAMERA_LERP_CONTROLPOINTS = [
+    [20, 20, 20, 20, 20, 20], [20, 20, 20, 20, 20, 20],
+    [107, 107, 107, 107, 107, 107], [107, 107, 107, 107, 107, 107]]
+
+CAMERA_LERP_INTERPOLATION = (
+    20, 107, 20, 107, 20, 107, 20, 107,
+    20, 107, 20, 107, 20, 107, 20, 107,
+    20, 107, 20, 107, 20, 107, 20, 107)
+
+
+def camera_controlpoints_to_vmdformat(control_points):
+    '''
+        c1x[X,Y,Z,R,D,V], c1y[X,Y,Z,R,D,V],
+        c2x[X,Y,Z,R,D,V], c2y][X,Y,Z,R,D,V]
+        ->
+        X[c1x, c2x, c1y, c2y], Y[c1x, c2x, c1y, c2y],
+        Z[c1x, c2x, c1y, c2y], R[c1x, c2x, c1y, c2y],
+        D[c1x, c2x, c1y, c2y], V[c1x, c2x, c1y, c2y]
+    '''
+    cp = [control_points[0], control_points[2],
+          control_points[1], control_points[3]]
+    return tuple([cp[i][j] for j in range(6) for i in range(4)])
+
+
+CAMERA_SAMPLE = camera(
+    0, -45, (0, 10, 0), (0, 0, 0), CAMERA_LERP_INTERPOLATION, 30, 0)
+
+
 #
 # typedef struct VmdLightFrame_t {
 #     uint32_t frame;
@@ -159,6 +242,10 @@ def unpack_light(buf, offset=0):
 def pack_light(p):
     expanded = (p.frame,) + p.rgb + p.direction
     return light_def.pack(*expanded)
+
+LIGHT_SAMPLE = light(
+    frame=0, rgb=(0.6019999980926514, 0.6019999980926514, 0.6019999980926514),
+    direction=(-0.5, -1.0, 0.5))
 #
 # typedef struct VmdSelfShadowFrame_t {
 #     uint32_t frame;
