@@ -58,6 +58,8 @@ class Vmdio:
         self.read_bytes()
 
     def load_fd(self, reader):
+        if len(self.counts.keys()) > 0:
+            self.__init__()
         self.buf = reader.read()
         self.read_bytes()
 
