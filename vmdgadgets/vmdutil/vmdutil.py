@@ -319,8 +319,8 @@ def transpose_m(m):
 
 
 def dot_m(m1, m2):
-    m2t = transpose_m(m2)
-    return [[dot_v(i, j) for j in m2t] for i in m1]
+    m1t = transpose_m(m1)
+    return [[dot_v(i, j) for j in m1t] for i in m2]
 
 
 def quaternion(v, rad):
