@@ -1,0 +1,24 @@
+{
+    "FFT_SAMPLE": 1024,
+    "BAND_DEFS":
+    {"10": [
+        [32, 64, 125, 250, 500, 1000, 2000, 4000, 8000, 16000],
+        1.4142135623730951]
+    },
+    "BANDS": "10",
+    "MIN_DB" : -60,
+    "FRAME_INCR" : 3,
+    "VMD_MAX_FRAME": 20000,
+    "BAR_WIDTH" : 8,
+    "BAR_SPACE" : 0.1,
+    "BAR_HEIGHT" : 85,
+    "BAR_RGB" : [0.4, 0.4, 0.6],
+    "BAR_TRANSPARENCY": 0.6,
+    "METER_BONE_NAME" : "b{0}1",
+    "USE_METER_MORPH" : false,
+    "METER_MORPH_NAME" : "b{0}",
+    "VIEW_MORPH_NAME" : "AL{0}",
+    "VIEW_MORPH_SCALE" : 0.3,
+    "USE_VIEW_MORPH" : true,
+    "METER_MODEL_NAME": "floor_meter"
+}
