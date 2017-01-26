@@ -214,9 +214,9 @@ def get_interval(frame_no, frame_dict):
 
 def interpolate_position(frame_no, begin, end, element='bones'):
     if element == 'bones':
-        cp = vmddef.get_bone_controlpoints(end)
+        cp = vmddef.bone_vmdformat_to_controlpoints(end.interpolation)
     elif element == 'cameras':
-        cp = vmddef.get_camera_controlpoints(end)
+        cp = vmddef.camera_vmdformat_to_controlpoints(end.interpolation)
     else:
         return None
     cpf = [[p[axis] / 127.0 for p in cp] for axis in range(len(cp[0]))]
