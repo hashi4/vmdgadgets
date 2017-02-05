@@ -4,8 +4,16 @@
 import math
 import bisect
 from collections import defaultdict
+from collections import Iterable
 from . import vmddef
 from . import vmdbezier
+
+EPS = 1e-10
+QUATERNION_IDENTITY = (0, 0, 0, 1)
+
+
+def clamp(v, min_v, max_v):
+    return max(min(v, max_v), min_v)
 
 
 class Vmdio:
@@ -273,6 +281,8 @@ SINE2_CONTROLPOINTS = [
 
 
 # in place of numpy
+
+
 def dot_v(v1, v2):
     return sum([i * j for i, j in zip(v1, v2)])
 # import functools
@@ -289,7 +299,7 @@ def cross_v3(v1, v2):
 
 
 def scale_v(v, scale):
-    return map(lambda x: x * scale, v)
+    return [i * scale for i in v]
 
 
 def add_v(v1, v2):
@@ -303,15 +313,86 @@ def sub_v(a, b):
 def rotate_v2(v, rad):
     c = math.cos(rad)
     s = math.sin(rad)
-    return (c * v[0] - s * v[1], s * v[0] + c * v[1])
+    return [c * v[0] - s * v[1], s * v[0] + c * v[1]]
+
+
+def norm_v(v):
+    r = math.sqrt(dot_v(v, v))
+    return r if r > EPS else 0
 
 
 def normalize_v(v):
-    n = sum(map(lambda i: i ** 2, v))
-    if 1.0 == n:
-        return v
+    n = dot_v(v, v)
     n = math.sqrt(n)
-    return map(lambda i: i / n, v)
+    if n > EPS:
+        return [i / n for i in v]
+    else:
+        return v
+
+
+def bool2sign(b):
+    return 1 if b else -1
+
+
+def project_v(v, axis):
+    v = list(v)
+    if isinstance(axis, Iterable):  # axis = vector
+        norm2 = dot_v(axis, axis)
+        if 0 == norm2:
+            return None
+        m = dot_v(v, axis) / norm2
+        return [m * i for i in axis]
+    else:  # axis = 0:x or 1:y, 2:z
+        axis = axis if axis > 0 else 0
+        axis = axis if axis < len(v) - 1 else len(v) - 1
+        return [0 for i in v[:axis]] + [v[axis]] + [0 for i in v[axis + 1:]]
+
+
+def project_to_plane_v(v, axis):
+        return sub_v(v, project_v(v, axis))
+
+
+def angle_v(v1, v2):
+    n1 = norm_v(v1)
+    n2 = norm_v(v2)
+    if 0 == n1 or 0 == n2:
+        return None
+    else:
+        return math.atan2(
+            norm_v(cross_v3(v1, v2)), dot_v(v1, v2))
+
+
+def lerp_v(v1, v2, t):
+    vr = scale_v(sub_v(v2, v1), t)
+    return add_v(v1, vr)
+
+
+def look_at(v1dir, v1up, v2, gup=None):
+    v2proj = project_to_plane_v(v2, v1up)
+    yaw_angle = angle_v(v1dir, v2proj)
+    if yaw_angle:
+        yaw_sign = 1 if dot_v(cross_v3(v1dir, v2proj), v1up) >= 0 else -1
+    else:
+        yaw_angle = 0
+        yaw_sign = 1
+    pitch_angle = angle_v(v2, v2proj)
+    if pitch_angle:
+        v2x = cross_v3(v1up, v2proj)
+        pitch_sign = 1 if dot_v(cross_v3(v2, v2proj), v2x) >= 0 else -1
+    else:
+        pitch_angle = 0
+        pitch_sign = 1
+    if gup:
+        v1up_proj = project_to_plane_v(v1up, v2)
+        gup_proj = project_to_plane_v(gup, v2)
+        roll_angle = angle_v(v1up_proj, gup_proj)
+        roll_sign = 1 if dot_v(cross_v3(gup_proj, v1up_proj), v2) >= 0 else -1
+    else:
+        roll_angle = 0
+        roll_sign = 1
+    return (pitch_angle * pitch_sign,
+            yaw_angle * yaw_sign,
+            roll_angle * roll_sign)
 
 
 def transpose_m(m):
@@ -324,39 +405,165 @@ def dot_m(m1, m2):
 
 
 def quaternion(v, rad):
+    norm = norm_v(v)
     c = math.cos(rad / 2)
     s = math.sin(rad / 2)
-    return (v[0] * s, v[1] * s, v[2] * s, c)
+    if norm == 0:
+        norm = 1
+    return [i * s / norm for i in v] + [c]
 
 
 def conjugate_q(q):
-    return (-q[0], -q[1], -q[2], q[3])
+    return [-q[0], -q[1], -q[2], q[3]]
 
 
-def multiply_quaternion(a, b):
+def inverse_q(q):
+    return scale_v(conjugate_q(q), 1 / norm_v(q))
+
+
+def multiply_quaternion(b, a):
     wa = a[3]
     wb = b[3]
     va = (a[0], a[1], a[2])
     vb = (b[0], b[1], b[2])
     wr = wa * wb - dot_v(va, vb)
-    vr = add_v(scale_v(vb, wa), scale_v(va, wb))
-    vr = add_v(vr, cross_v3(va, vb))
-    return (vr[0], vr[1], vr[2], wr)
+    vr = add_v(add_v(scale_v(vb, wa), scale_v(va, wb)), cross_v3(va, vb))
+    return vr + [wr]
 
 
 def mirror_quaternion(rotation, plane='yz'):
     if 'yz' == plane:
-        return (-rotation[0], rotation[1], rotation[2], -rotation[3])
+        return [-rotation[0], rotation[1], rotation[2], -rotation[3]]
     else:  # not impelemnted
         return None
 
 
 def compose_quaternion(current, v, rad, local=True):
-    v = normalize_v(v)
     r = quaternion(v, rad)
     return (
-        multiply_quaternion(current, r) if local else
-        multiply_quaternion(r, current))
+        multiply_quaternion(r, current) if local else
+        multiply_quaternion(current, r))
+
+
+def rotate_v3q(v, q):
+    v = list(v) + [0]
+    return multiply_quaternion(
+        multiply_quaternion(conjugate_q(q), v), q)[:3]
+
+
+def diff_q(q1, q2):
+    return multiply_quaternion(inverse_q(q1), q2)
+
+
+def quaternion_to_matrix(q):
+    i, j, k, w = q
+    return [
+        [1 - 2 * (j * j + k * k), 2 * (i * j - k * w), 2 * (i * k + j * w)],
+        [2 * (i * j + k * w), 1 - 2 * (i * i + k * k), 2 * (j * k - i * w)],
+        [2 * (i * k - j * w), 2 * (j * k + i * w), 1 - 2 * (i * i + j * j)]
+    ]
+
+
+def euler_to_quaternion(euler):  # zxy -> quaternion
+    pitch, yaw, roll = euler
+    cy = math.cos(yaw / 2.0)
+    cp = math.cos(pitch / 2.0)
+    cr = math.cos(roll / 2.0)
+    sy = math.sin(yaw / 2.0)
+    sp = math.sin(pitch / 2.0)
+    sr = math.sin(roll / 2.0)
+
+    x = cp * sy * sr + cy * cr * sp
+    y = cp * cr * sy - cy * sp * sr
+    z = cp * cy * sr - cr * sp * sy
+    w = sp * sy * sr + cp * cy * cr
+
+    return x, y, z, w
+
+
+def e2q(pitch, yaw, roll):  # another zxy
+    ry = quaternion((0, 1, 0), yaw)
+    rp = quaternion((1, 0, 0), pitch)
+    rr = quaternion((0, 0, 1), roll)
+    return multiply_quaternion(
+        multiply_quaternion(rr, rp), ry)
+
+
+def euler_to_matrix(euler):
+    x, y, z = euler
+    cx = math.cos(x)
+    cy = math.cos(y)
+    cz = math.cos(z)
+    sx = math.sin(x)
+    sy = math.sin(y)
+    sz = math.sin(z)
+    return [
+        [cy * cz + sy * sx * sz, cy * -sz + sy * sx * cz, sy * cx],
+        [cx * sz, cx * cz, -sx],
+        [-sy * cz + cy * sx * sz, sy * sz + cy * sx * cz, cy * cx]
+    ]
+
+
+def quaternion_to_euler(q):  #  for debug
+    m = quaternion_to_matrix(q)
+    # -sx = m[1][2]
+    # sy/cy = m[0][2]/m[2][2]
+    # sz/cz = m[1][0]/m[1][1]
+    # if -sx == 0
+    return (
+        -math.asin(m[1][2]), math.atan2(m[0][2], m[2][2]),
+        math.atan2(m[1][0], m[1][1]))
+
+
+def slerp_q(q1, q2, t):
+    dot = dot_v(q1, q2)
+    if dot < 0:
+        qx = [-i for i in q2]
+        dot = -dot
+    else:
+        qx = q2
+    if dot < 0.995:
+        angle = math.acos(dot)
+        # (q1 * sin(angle * (1-t)) + qx * sin(angle * t))/sin(angle)
+        return scale_v(add_v(
+            scale_v(q1, math.sin(angle * (1 - t))),
+            scale_v(qx, math.sin(angle * t))), 1 / math.sin(angle))
+    else:
+        return lerp_v(q1, qx, t)
+
+
+def scale_q(q, t):
+    return slerp_q(QUATERNION_IDENTITY, q, t)
+
+
+def interpolate_rotation(frame_no, begin, end, element='bones'):
+    if element == 'bones':
+        cp = vmddef.bone_vmdformat_to_controlpoints(end.interpolation)
+    elif element == 'cameras':
+        cp = vmddef.camera_vmdformat_to_controlpoints(end.interpolation)
+    else:
+        return None
+    cpf = [[p[axis] / 127.0 for p in cp] for axis in range(len(cp[0]))]
+    bx = (frame_no - begin.frame) / (end.frame - begin.frame)
+    xcp = [0.0, cpf[3][0], cpf[3][2], 1.0]
+    t = vmdbezier.bezier3f_x2t(xcp, bx)
+    ycp = [0.0, cpf[3][1], cpf[3][3], 1.0]
+    by = vmdbezier.bezier3f(ycp, t)
+    if 'bones' == element:
+        return slerp_q(begin.rotation, end.rotation, by)
+    else:
+        return lerp_v(begin.rotation, end.rotation, by)
+
+
+def interpolate_camera_distance(frame_no, begin, end):
+    cp = vmddef.camera_vmdformat_to_controlpoints(end.interpolation)
+    cpf = [[p[axis] / 127.0 for p in cp] for axis in range(len(cp[0]))]
+    bx = (frame_no - begin.frame) / (end.frame - begin.frame)
+    xcp = [0.0, cpf[4][0], cpf[4][2], 1.0]
+    t = vmdbezier.bezier3f_x2t(xcp, bx)
+    ycp = [0.0, cpf[4][1], cpf[4][3], 1.0]
+    by = vmdbezier.bezier3f(ycp, t)
+    return lerp_v([begin.distance], [end.distance], by)[0]
 
 
 def mirror_frame(frame, plane='yz'):
@@ -379,3 +586,8 @@ def mirror_frame(frame, plane='yz'):
             return frame._replace(position=pos, rotation=rotation)
     else:
         return None  # not implemented
+
+
+def pp_q(q):  #  for debug
+    e = quaternion_to_euler(q)
+    return [round(math.degrees(x), 4) for x in e]

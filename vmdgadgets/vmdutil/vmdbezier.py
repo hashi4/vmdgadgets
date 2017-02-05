@@ -40,7 +40,10 @@ def _n(f, fd, t):
 
 
 def bezier3f_x2t(control_points, x):
-    init = 0.5
+    if x > .5:
+        init = 0.7
+    else:
+        init = 0.3
 
     def f(t):
         return bezier3f(control_points, t) - x
