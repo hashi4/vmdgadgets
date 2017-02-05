@@ -35,7 +35,7 @@ Pythonの導入・利用方法については、[python.org](https://www.python.
 ## 導入方法、使い方
 vmdgadgetsディレクトリ以下をどこかにコピーしてください。  
 それぞれのスクリプトに対して、-h か --helpを指定実行すると、簡単な使い方やオプションの説明を出力します。酷い英語ですがご容赦ください。
-* 1. camlightの使い方は以下の通りです。
+* camlightの使い方は以下の通りです。
 
     * `python camlight.py 入力カメラファイル名 出力照明ファイル名`
 
@@ -45,7 +45,7 @@ vmdgadgetsディレクトリ以下をどこかにコピーしてください。
 
     * なお、2.のvmd_concatはコピー諸元(コピー元となるファイルの名称やフレーム番号)を記載したテキストを直接の入力にします。
 
-* 6. trace_camera, trace_modelの使い方は以下の通りです。
+* trace_camera, trace_modelの使い方は以下の通りです。
     * `python trace_camera.py 自pmx名 自vmd名 カメラvmd名 出力vmd名`
     * `python trace_model.py 自pmx名 自vmd名 相手pmx名 相手vmd名 出力vmd名`
     * pmxファイルの読込みが苦手で、十秒以上かかることがあります。計算も遅いため、「全ての親」から「首」までで、モーションを持たないボーンをvmdから削除しておくと、少し速くなります。
