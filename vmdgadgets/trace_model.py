@@ -41,7 +41,7 @@ def _make_argumentparser():
     return parser
 
 
-def trace_camera(args):
+def trace_model(args):
     l = lookat.LookAt(args.from_pmx, args.from_vmd)
     l.set_target_pmx(args.to_pmx)
     l.set_target_vmd(args.to_vmd)
@@ -70,4 +70,4 @@ def trace_camera(args):
 _parser = _make_argumentparser()
 if __name__ == '__main__':
     args = _parser.parse_args()
-    trace_camera(args)
+    trace_model(args)
