@@ -64,6 +64,7 @@ vmdgadgetsディレクトリ以下をどこかにコピーしてください。
 
 
 ## サンプル
-* 1.sample/lamb: camlightのサンプル、バッチファイル
+* 1.sample/lamb: camlightのサンプルバッチファイル
 * 5.sample/spectrum: スペクトラムメータのサンプル
+* 6.sample/lookat: 目線モーション作成サンプルバッチファイル(モデルやモーションは含まれません)
 * 他に、sample/sineに、補間曲線でサインカーブを近似するサンプル。円運動を描くのに利用。
