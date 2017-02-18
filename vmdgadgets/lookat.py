@@ -37,7 +37,7 @@ def get_global_transform(
         parent_bone_def.position)
     this_global_pos = vmdutil.add_v(
         parent_global[1],
-        vmdutil.rotate_v3q(bone_vector, parent_transform[0]))
+        vmdutil.rotate_v3q(bone_vector, parent_global[0]))
     this_global_rot = vmdutil.multiply_quaternion(
         this_transform[0], parent_global[0])
     return this_global_rot, this_global_pos
