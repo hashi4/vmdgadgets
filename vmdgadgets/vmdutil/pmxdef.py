@@ -27,6 +27,7 @@ PMX_ELEMENTS = (
     'soft_bodies',  # 2.1
 )
 
+
 def b_to_str(b, encoding=PMX_ENCODING[0]):
     return b.decode(encoding)
 
@@ -67,6 +68,8 @@ def pack_name(header, p):
 
 count_def = struct.Struct('<1i')
 count = namedtuple('count', 'count')
+
+
 def unpack_count(buf, offset=0):
     return count._make(count_def.unpack_from(buf, offset)), count_def.size
 
@@ -356,7 +359,7 @@ bone = namedtuple(
     # mandatory
     'name_jp name_en position parent transform_hierarchy flag disp_dir ' +
     # optional
-    'additional_transform axis_constraints local_axises ex_parent ik'
+    'additional_transform fixed_axis local_axises ex_parent ik'
 )
 bone_additional_transform = namedtuple(
    'bone_additional_transform', 'parent weight')
@@ -378,7 +381,7 @@ BONE_IS_IK = 0x0020
 BONE_APPLY_LOCAL = 0x0080
 BONE_ADD_ROTATE = 0x0100
 BONE_ADD_TRANSLATE = 0x0200
-BONE_AXIS_IS_LIMITED = 0x0400
+BONE_AXIS_IS_FIXED = 0x0400
 BONE_ASSIGN_LOCAL_AXIES = 0x0800
 BONE_TRANSFORM_AFTER_PHYSICS = 0x1000
 BONE_EXTERNAL_PARENT = 0x2000
@@ -420,16 +423,16 @@ def pack_bone_additional_transform(header, flag, p):
         return bytes()
 
 
-def unpack_bone_axis_constraints(header, flag, buf, offset=0):
-    if flag & BONE_AXIS_IS_LIMITED == BONE_AXIS_IS_LIMITED:
+def unpack_bone_fixed_axis(header, flag, buf, offset=0):
+    if flag & BONE_AXIS_IS_FIXED == BONE_AXIS_IS_FIXED:
         return struct.unpack_from(
             '<3f', buf, offset), struct.calcsize('<3f')
     else:
         return None, 0
 
 
-def pack_bone_axis_constraints(header, flag, p):
-    if flag & BONE_AXIS_IS_LIMITED == BONE_AXIS_IS_LIMITED:
+def pack_bone_fixed_axis(header, flag, p):
+    if flag & BONE_AXIS_IS_FIXED == BONE_AXIS_IS_FIXED:
         return struct.pack('<3f', *p)
     else:
         return bytes()
@@ -532,7 +535,7 @@ def unpack_bone(header, buf, offset=0):
     additional_transform, s = unpack_bone_additional_transform(
         header, flag, buf, offset + size)
     size += s
-    axis_constraints, s = unpack_bone_axis_constraints(
+    fixed_axis, s = unpack_bone_fixed_axis(
         header, flag, buf, offset + size)
     size += s
     local_axies, s = unpack_bone_local_axises(
@@ -544,7 +547,7 @@ def unpack_bone(header, buf, offset=0):
     size += s
     return bone(
         name_jp, name_en, position, parent, transform_hierarchy, flag,
-        disp_dir, additional_transform, axis_constraints,
+        disp_dir, additional_transform, fixed_axis,
         local_axies, ex_parent, ik), size
 
 
@@ -559,7 +562,7 @@ def pack_bone(header, p):
     result += pack_bone_disp_dir(header, p.flag, p.disp_dir)
     result += pack_bone_additional_transform(
         header, p.flag, p.additional_transform)
-    result += pack_bone_axis_constraints(header, p.flag, p.axis_constraints)
+    result += pack_bone_fixed_axis(header, p.flag, p.fixed_axis)
     result += pack_bone_local_axies(header, p.flag, p.local_axises)
     result += pack_bone_ex_parent(header, p.flag, p.ex_parent)
     result += pack_bone_ik(header, p.flag, p.ik)
@@ -585,7 +588,7 @@ morph_material = namedtuple(
     'ambient edge_color edge_size texture_coef sphere_texture_coef ' +
     'toon_texture_coef')
 morph_flip = namedtuple(
-    'morph_flip','morph weight')
+    'morph_flip', 'morph weight')
 morph_impulse = namedtuple(
     'morph_impulse', 'rigid_body local verocity torque')
 MORPH_FIXED_PACK = '<1B1B1i'
@@ -593,7 +596,7 @@ MORPH_GROUP_PACK = '<1{0}1f'
 MORPH_VERTEX_PACK = '<1{0}3f'
 MORPH_BONE_PACK = '<1{0}3f4f'
 MORPH_UV_PACK = '<1{0}4f'
-MORPH_MATERIAL_PACK='<1{0}1B4f3f1f3f4f1f4f4f4f'
+MORPH_MATERIAL_PACK = '<1{0}1B4f3f1f3f4f1f4f4f4f'
 MORPH_FLIP_PACK = '<1{0}1f'
 MORPH_IMPULSE_PACK = '<1{0}1B3f3f'
 
@@ -769,6 +772,7 @@ DISP_NODE_0 = disp_node(
 DISP_NODE_1 = disp_node(
     '表情', 'Exp', DISP_NODE_SPECIAL, 0, ())
 
+
 def unpack_disp_node(header, buf, offset=0):
     size = 0
     name_jp, name_en, s = unpack_name(header, buf, offset)
@@ -826,8 +830,8 @@ def unpack_rigid_body(header, buf, offset=0):
     size += s
 
     pack_format = BODY_FORMAT.format(INDEX_FORMAT[header.bone_isize])
-    body_val = group_tuple(pack_format, 
-        struct.unpack_from(pack_format, buf, offset + size))
+    body_val = group_tuple(
+        pack_format, struct.unpack_from(pack_format, buf, offset + size))
     size += struct.calcsize(pack_format)
     return rigid_body._make((name_jp, name_en) + body_val), size
 
@@ -871,8 +875,8 @@ def unpack_joint(header, buf, offset=0):
     if JOINT_6DOF_SPRING == joint_type:
         pack_format = JOINT_FORMAT.format(
             INDEX_FORMAT[header.rigid_body_isize])
-        joint_val = group_tuple(pack_format, 
-            struct.unpack_from(pack_format, buf, offset + size))
+        joint_val = group_tuple(
+            pack_format, struct.unpack_from(pack_format, buf, offset + size))
         size += struct.calcsize(pack_format)
     else:
         joint_val = (None,) * 10
@@ -917,8 +921,9 @@ SOFT_BODY_CONFIG_FORMAT = '<4f4f4f4f4f4f4f4f4f4f4f4f'
 SOFT_BODY_CLUSTER_FORMAT = '<4f4f4f4f4f4f'
 SOFT_BODY_ITERATION_FORMAT = '<4f4f4f4f'
 SOFT_BODY_MATERIAL_FROMAT = '<4f4f4f'
-SOFT_BODY_ANCHOR_FORAMT = '<1{0}1{0}1B'  #  rigid_index, v_index
-SOFT_BODY_VERTEX_FORMAT = '<1{0}'  #  v_index
+SOFT_BODY_ANCHOR_FORAMT = '<1{0}1{0}1B'  # rigid_index, v_index
+SOFT_BODY_VERTEX_FORMAT = '<1{0}'  # v_index
+
 
 def unpack_soft_body(header, buf, offset=0):
     size = 0
@@ -1028,5 +1033,5 @@ PMX_IO_UTIL = {
     PMX_ELEMENTS[8]: (
         pack_joint, unpack_joint),
     PMX_ELEMENTS[9]: (
-        pack_soft_body, unpack_soft_body),  #  2.1
+        pack_soft_body, unpack_soft_body),  # 2.1
 }
