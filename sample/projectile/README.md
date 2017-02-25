@@ -26,6 +26,7 @@
     * `python turret.py`
     * motionディレクトリに、turret.vmd, face.vmdと砲門名vmdファイルが出来ます
     * それぞれ、砲塔モーション、顔・首モーション、砲弾モーションです。
+    * motion/bulletsディレクトリを作成し、そこに中間ファイルを置きます。実行の度にそこにあるvmdファイルを全て勝手に消してしまうので注意してください。
     * 計算はかなり遅いです。
 5. mmdへ取込み
     * gunner.vmd, turret.vmd, face.vmdを1, 2で変更したモデルに取込み
