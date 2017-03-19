@@ -4,6 +4,8 @@ import os
 
 import vmdutil
 from vmdutil import vmddef
+from vmdutil import pmxdef
+from vmdutil import vmdmotion
 from lookat import LookAt, MotionFrame
 
 FPS = 30
@@ -96,33 +98,28 @@ class Projectile(LookAt):
 
     def get_arm_rotation(
             self, frame_type, frame_no, bone_name, parent_name,
-            global_transforms, vmd_transforms,
             watcher_v, watcher_dir, watcher_pos, axis, up,
             target_v, target_pos):
         # TODO
         if 'f' in frame_type:
             return self.get_projectile_arm_rotation(
                 frame_type, frame_no, bone_name, parent_name,
-                global_transforms, vmd_transforms,
                 watcher_v, watcher_dir, watcher_pos, axis, up,
                 target_v, target_pos)
         else:
             if self.tracking_mode == 'L':
                 return LookAt.get_arm_rotation(
                     self, frame_type, frame_no, bone_name, parent_name,
-                    global_transforms, vmd_transforms,
                     watcher_v, watcher_dir, watcher_pos, axis, up,
                     target_v, target_pos)
             elif self.tracking_mode == 'P':
                 return self.get_projectile_arm_rotation(
                     frame_type, frame_no, bone_name, parent_name,
-                    global_transforms, vmd_transforms,
                     watcher_v, watcher_dir, watcher_pos, axis, up,
                     target_v, target_pos)
 
     def get_projectile_arm_rotation(
             self, frame_type, frame_no, bone_name, parent_name,
-            global_transforms, vmd_transforms,
             watcher_v, watcher_dir, watcher_pos, axis, up,
             target_v, target_pos):
         look_dir = vmdutil.sub_v(target_pos, watcher_pos)
@@ -138,16 +135,19 @@ class Projectile(LookAt):
         angle = vmdutil.look_at_fixed_axis(
             watcher_dir, up, vmdutil.normalize_v(v))
         hrot = tuple(vmdutil.quaternion(axis, angle))
-        bone_index = self.bone_dict[self.WATCHER][bone_name]
-        if bone_index in self.watcher_leaves and 'f' in frame_type:
+        bone_index = self.watcher_transform.bone_name_to_index[bone_name]
+        if bone_index in self.watcher_transform.leaf_indexes and 'f' in frame_type:
             self.export_bullet_motion(
-                frame_no, bone_name, watcher_pos, v, t, c_pos)
+                frame_no, bone_index, watcher_pos, v, t, c_pos)
         return hrot
 
     def export_bullet_motion(
-            self, frame_no, bone_name,
+            self, frame_no, bone_index,
             from_pos, bullet_v, collision_time, collision_pos):
         vx, vy, vz = bullet_v
+        bone_defs = self.watcher_transform.bone_defs
+        bone_def = bone_defs[bone_index]
+        bone_name = bone_def.name_jp
         extreme_time, extreme_pos = extreme_value(from_pos, bullet_v)
         if extreme_time > 0:  # vy > 0
             b_bone = 'センター'.encode(vmddef.ENCODING)

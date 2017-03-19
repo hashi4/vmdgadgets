@@ -400,7 +400,7 @@ def look_at_fixed_axis(v1dir, v1up, v2, gup=None):
         sign = 1 if dot_v(cross_v3(v1dir, v2proj), v1up) >= 0 else -1
     else:
         angle = 0
-        signe = 1
+        sign = 1
     return angle * sign
 
 

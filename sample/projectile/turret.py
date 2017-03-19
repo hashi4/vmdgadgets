@@ -196,6 +196,7 @@ def turret_and_face():
 def face_camera():
     s1 = lookat.LookAt(BISMARK, GUNNER)
     s1.set_target_vmd(CAMERA)
+    s1.set_constraint('両目', [(20, 30, 0), (0.1, 0.1, 0)])
     s1.set_additional_frames([120])
     s1.set_frame_range([SEQ1_RANGE, (1251, 1350)])
     frames = s1.look_at()

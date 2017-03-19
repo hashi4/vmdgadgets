@@ -207,19 +207,32 @@ def make_bone_link(
         return make_bone_link(bones, parent, to_index, criteria, bone_list)
 
 
-def make_bone_link_graph(
+def make_all_bone_link_graph(
+    bones, criteria=None, bone_graph=None):
+    if bone_graph is None:
+        bone_graph = Bonegraph()
+    for bone_index, bone_def in enumerate(bones):
+        if bone_def.parent > 0 and (criteria is None or criteria(bone_def)):
+            bone_graph.add_edge(bone_def.parent, bone_index)
+    return bone_graph
+
+
+def make_sub_bone_link_graph(
     bones, from_index, to_indexes, criteria=None, bone_graph=None):
     if bone_graph is None:
         bone_graph = Bonegraph()
-    parents = list()
+    parents = set()
+    nodes = [node for node in bone_graph.edges]
     for to_index in to_indexes:
         to_bone = bones[to_index]
-        if to_index != from_index and (criteria is None or criteria(to_bone)):
-            bone_graph.add_edge(to_bone.parent, to_index)
-            if to_bone.parent != from_index and to_bone.parent != 0:
-                parents.append(to_bone.parent)
+        if to_index >= from_index and (criteria is None or criteria(to_bone)):
+            if to_bone.parent >= from_index:
+                bone_graph.add_edge(to_bone.parent, to_index)
+            if (to_bone.parent != from_index and
+                to_bone.parent not in nodes):
+                parents.add(to_bone.parent)
     if len(parents) > 0:
-        return make_bone_link_graph(
+        return make_sub_bone_link_graph(
             bones, from_index, parents, criteria, bone_graph)
     else:
         return bone_graph

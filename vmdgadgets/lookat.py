@@ -1,12 +1,11 @@
-import sys
 import math
 import heapq
-import bisect
 import vmdutil
 from collections import namedtuple
 from vmdutil import vmddef
 from vmdutil import pmxutil
 from vmdutil import pmxdef
+from vmdutil import vmdmotion
 
 FRAME_MIN = 0
 FRAME_MAX = 4294967295  # UINT32_MAX
@@ -56,20 +55,6 @@ class FrameRange():
         return True if frame_no > self.max_frame else False
 
 
-def get_global_transform(
-        this_transform, this_bone_def,
-        parent_transform, parent_bone_def, parent_global):
-    bone_vector = vmdutil.sub_v(
-        vmdutil.add_v(this_bone_def.position, this_transform[1]),
-        parent_bone_def.position)
-    this_global_pos = vmdutil.add_v(
-        parent_global[1],
-        vmdutil.rotate_v3q(bone_vector, parent_global[0]))
-    this_global_rot = vmdutil.multiply_quaternion(
-        this_transform[0], parent_global[0])
-    return this_global_rot, this_global_pos
-
-
 def replace_bonedef_position(bone1, bone2, axis):
     new_position = []
     for index in range(len(bone1.position)):
@@ -111,9 +96,6 @@ class LookAt():
         self.TARGET = 1
         self.bone_defs = {}
         self.bone_dict = {}
-        self.frame_dict = {self.WATCHER: {}, self.TARGET: {}}
-        self.sorted_keyframes = {self.WATCHER: {}, self.TARGET: {}}
-        self.motion_name_dict = {self.WATCHER: {}, self.TARGET: {}}
 
     def set_target_pos(self, pos):
         self.target_pos = pos
@@ -191,28 +173,32 @@ class LookAt():
 
     def make_arm_dir(self):
         base_dirs = {}
-        leaf_indexes = self.watcher_leaves
-        overwrite_indexes = [
-            self.bone_dict[self.WATCHER][name]
-            for name in self.overwrite_bones]
-        graph = self.watcher_bone_graph
-        leaves = sorted(leaf_indexes, reverse=True)
-        bone_defs = self.bone_defs[self.WATCHER]
-
+        leaf_indexes = self.watcher_transform.leaf_indexes
+        graph = self.watcher_transform.transform_bone_graph
+        bone_defs = self.watcher_transform.bone_defs
         for leaf_index in leaf_indexes:
-            base_dirs[leaf_index] = (0, 0, -1)
-            degree = graph.in_degree(leaf_index)
-            parent_index = next(iter(graph.preds[leaf_index]))
-            base_dir = vmdutil.sub_v(
-                bone_defs[leaf_index].position,
-                bone_defs[parent_index].position)
-            while True:
-                if parent_index in overwrite_indexes:
-                    base_dirs[parent_index] = base_dir
-                degree = graph.in_degree(parent_index)
+            if leaf_index in self.overwrite_indexes:
+                bone_def = bone_defs[leaf_index]
+                if (bone_def.flag & pmxdef.BONE_DISP_DIR ==
+                   pmxdef.BONE_DISP_DIR):
+                    disp_to_bone_index = bone_def.disp_dir
+                    base_dir = vmdutil.sub_v(
+                        bone_defs[disp_to_bone_index].position,
+                        bone_def.position)
+                else:
+                    base_dir = bone_def.disp_dir
+                base_dirs[leaf_index] = base_dir
+                degree = graph.in_degree(leaf_index)
                 if degree <= 0:
-                    break
-                parent_index = next(iter(graph.preds[parent_index]))
+                    continue
+                parent_index = next(iter(graph.preds[leaf_index]))
+                while True:
+                    if parent_index in self.overwrite_indexes:
+                        base_dirs[parent_index] = base_dir
+                    degree = graph.in_degree(parent_index)
+                    if degree <= 0:
+                        break
+                    parent_index = next(iter(graph.preds[parent_index]))
         return base_dirs
 
     def setup_watcher(self, queue):
@@ -232,218 +218,80 @@ class LookAt():
             raise Exception('bones to be overwritten are not in pmx.')
 
         # bone_graph
-        overwrite_indexes = [bone_dict[name] for name in self.overwrite_bones]
-        self.watcher_bone_graph = pmxutil.make_bone_link_graph(
-            bone_defs, 0, overwrite_indexes)
-        out_degrees = self.watcher_bone_graph.out_degree()
-        self.watcher_leaves = [e[0] for e in out_degrees if e[1] == 0]
+        self.watcher_transform = vmdmotion.BoneTransformation(
+            bone_defs, self.watcher_motions, self.overwrite_bones, True)
 
-        # vmd
-        motion_dict = vmdutil.frames_to_dict(self.watcher_motions)
-        self.motion_name_dict[self.WATCHER] = vmdutil.make_name_dict(
-            motion_dict, decode=True)
-
-        # remove motionless nodes from graph
-        transform_bones = [e[0] for e in out_degrees]
-        for node_index in transform_bones:
-            name = bone_defs[node_index].name_jp
-            if (name not in self.motion_name_dict[self.WATCHER] and
-                    name not in self.overwrite_bones):
-                self.watcher_bone_graph.remove_node(node_index)
-        transform_bones = [node for node in self.watcher_bone_graph.edges]
-        transform_bonenames = [bone_defs[i].name_jp for i in transform_bones]
-
-        # sort by transform order
-        self.watcher_transform_bone_indexes = pmxutil.get_transform_order(
-            [bone_dict[name] for name in transform_bonenames], bone_defs)
-        self.watcher_transform_bone_names = [
-            bone_defs[bone_index].name_jp for bone_index in
-            self.watcher_transform_bone_indexes]
+        self.overwrite_indexes = [
+            self.watcher_transform.bone_name_to_index[bone_name]
+            for bone_name in self.overwrite_bones]
 
         # make dir
         if 'ARM' == self.point_mode:
             self.base_dirs = self.make_arm_dir()
         else:
             self.base_dirs = {}
-            for index in overwrite_indexes:
+            for index in self.overwrite_indexes:
                 self.base_dirs[index] = (0, 0, -1)
 
-        self.frame_dict[self.WATCHER] = d = {}
-        self.sorted_keyframes[self.WATCHER] = f = {}
-        for bone_index in self.watcher_transform_bone_indexes:
+        for bone_index in self.watcher_transform.transform_bone_indexes:
             bone_def = bone_defs[bone_index]
             bone_name = bone_def.name_jp
             if bone_name not in self.overwrite_bones:
-                d[bone_name] = {}
-                f[bone_name] = (
-                    [motion.frame for motion in
-                     self.motion_name_dict[self.WATCHER][bone_name]])
-                for motion in self.motion_name_dict[self.WATCHER][bone_name]:
+                for motion in (
+                        self.watcher_transform.motion_name_dict[bone_name]):
                     queue.push(MotionFrame(
                         motion.frame, 'b', self.WATCHER, bone_name))
-                    d[bone_name][motion.frame] = motion
         return
 
     def setup_target(self, queue):
         if 'CAMERA' == self.target_mode:
-            sorted_motions = sorted(self.target_motions, key=lambda e: e.frame)
-            self.frame_dict[self.TARGET]['CAMERA'] = d = {}
-            self.sorted_keyframes[self.TARGET]['CAMERA'] = (
-                 [m.frame for m in sorted_motions])
+            self.target_transform = vmdmotion.CameraTransformation(
+                self.target_motions)
+            sorted_motions = self.target_transform.sorted_motions
             for i, motion in enumerate(sorted_motions):
                 type = 'c' if (
                     i > 0 and
                     sorted_motions[i - 1].frame == motion.frame - 1) else 'v'
                 queue.push(MotionFrame(
                     motion.frame, type, self.TARGET, 'CAMERA'))
-                d[motion.frame] = motion
             return
         elif 'MODEL' == self.target_mode:
             bone_defs = self.bone_defs[self.TARGET]
             self.bone_dict[self.TARGET] = d = pmxutil.make_name_dict(bone_defs)
             if self.target_bone not in d:
                 raise Exception('target bone is not in pmx.')
-            target_index = d[self.target_bone]
             if self.target_bone == '両目':
                 bone_defs[d['両目']] = replace_bonedef_position(
                     bone_defs[d['両目']],
                     bone_defs[d['右目']], [1, 2])
             # pmx
-            transform_bones = pmxutil.make_bone_link(
-                bone_defs, target_index, 0,
-                criteria=lambda b: b.flag & pmxdef.BONE_CAN_ROTATE ==
-                pmxdef.BONE_CAN_ROTATE)
-            # vmd
-            motion_dict = vmdutil.frames_to_dict(self.target_motions)
-            self.motion_name_dict[self.TARGET] = vmdutil.make_name_dict(
-                motion_dict, decode=True)
-            if self.target_bone not in self.motion_name_dict[self.TARGET]:
-                self.motion_name_dict[self.TARGET][self.target_bone] = []
-            else:
-                self.target_bone_has_motion = True
+            self.target_transform = vmdmotion.BoneTransformation(
+                bone_defs, self.target_motions, [self.target_bone], True)
 
-            # (pmx AND vmd) OR look_target
-            transform_bonenames = set(
-                [bone_defs[i].name_jp
-                    for i in transform_bones]).intersection(
-                    set(self.motion_name_dict[self.TARGET].keys())).union(
-                    set([self.target_bone]))
-
-            self.target_transform_bone_indexes = pmxutil.get_transform_order(
-                [d[name] for name in transform_bonenames], bone_defs)
-
-            for bone_index in self.target_transform_bone_indexes:
+            for bone_index in self.target_transform.transform_bone_indexes:
                 bone_def = bone_defs[bone_index]
                 bone_name = bone_def.name_jp
-                self.frame_dict[self.TARGET][bone_name] = d = {}
-                self.sorted_keyframes[self.TARGET][bone_name] = (
-                    [motion.frame for motion in
-                     self.motion_name_dict[self.TARGET][bone_name]])
-                for motion in self.motion_name_dict[self.TARGET][bone_name]:
+                for motion in (
+                        self.target_transform.motion_name_dict[bone_name]):
                     queue.push(
                         MotionFrame(motion.frame, 'b', self.TARGET, bone_name))
-                    d[motion.frame] = motion
             return
 
-    def get_vmd_index(self, model_id, bone_name, frame_no):
-        keys = self.sorted_keyframes[model_id][bone_name]
-        index = bisect.bisect_left(keys, frame_no)
-        if index <= len(keys) - 1 and keys[index] == frame_no:
-            return index, True
-        else:
-            return index - 1, False
-
-    def get_vmd_transform(self, frame_no, bone_name, model_id):
-        frame_dict = self.frame_dict[model_id][bone_name]
-        key_frames = self.sorted_keyframes[model_id][bone_name]
-        bone_def_id = self.bone_dict[model_id][bone_name]
-        bone_def = self.bone_defs[model_id][bone_def_id]
-        vmd_index, is_key_frame = self.get_vmd_index(
-            model_id, bone_name, frame_no)
-
-        if is_key_frame:
-            m = frame_dict[frame_no]
-            rotation = m.rotation
-            position = m.position
-        else:
-            begin = frame_dict[key_frames[vmd_index]]
-            if vmd_index < len(key_frames) - 1:
-                end = frame_dict[key_frames[vmd_index + 1]]
-                if (bone_def.flag & pmxdef.BONE_CAN_TRANSLATE ==
-                   pmxdef.BONE_CAN_TRANSLATE):
-                    position = vmdutil.interpolate_position(
-                        frame_no, begin, end, 'bones')
-                else:
-                    position = [0, 0, 0]
-                if (bone_def.flag & pmxdef.BONE_CAN_ROTATE ==
-                        pmxdef.BONE_CAN_ROTATE):
-                    rotation = vmdutil.interpolate_rotation(
-                        frame_no, begin, end, 'bones')
-                else:
-                    rotation = vmdutil.QUATERNION_IDENTITY
-            else:
-                rotation = begin.rotation
-                position = begin.position
-        return rotation, position
-
-    def get_camera_pos(self, position, rotation, distance):
+    def get_camera_pos(self, rotation, position, distance):
         direction = vmdutil.camera_direction(rotation, distance)
         return vmdutil.add_v(position, direction)
 
     def get_target_camera_pos(self, frame_no):
-        frame_dict = self.frame_dict[self.TARGET]['CAMERA']
-        key_frames = self.sorted_keyframes[self.TARGET]['CAMERA']
-        vmd_index, is_key_frame = self.get_vmd_index(
-            self.TARGET, 'CAMERA', frame_no)
-
-        if is_key_frame:
-            m = frame_dict[frame_no]
-            pos = self.get_camera_pos(
-                m.position, m.rotation, m.distance)
-        else:
-            begin = frame_dict[key_frames[vmd_index]]
-            if vmd_index < len(key_frames) - 1:
-                end = frame_dict[key_frames[vmd_index + 1]]
-                position = vmdutil.interpolate_position(
-                    frame_no, begin, end, 'cameras')
-                rotation = vmdutil.interpolate_rotation(
-                    frame_no, begin, end, 'cameras')
-                distance = vmdutil.interpolate_camera_distance(
-                    frame_no, begin, end)
-                pos = self.get_camera_pos(position, rotation, distance)
-            else:
-                pos = self.get_camera_pos(
-                    begin.position, begin.rotation, begin.distance)
+        rotation, position, distance = self.target_transform.get_vmd_transform(
+            frame_no)
+        pos = self.get_camera_pos(rotation, position, distance)
         return pos
 
     def get_target_model_pos(self, frame_no):
-        vmd_transforms = {}
-        global_transforms = {}
-        bone_defs = self.bone_defs[self.TARGET]
-        for loop_i, bone_index in enumerate(
-                self.target_transform_bone_indexes):
-            # vmd transform
-            bone_def = bone_defs[bone_index]
-            bone_name = bone_def.name_jp
-            rotation, position = self.get_vmd_transform(
-                frame_no, bone_name, self.TARGET)
-            vmd_transforms[bone_name] = (rotation, position)
-            # global transform
-            if loop_i == 0:  # root
-                global_transforms[bone_name] = (
-                    vmd_transforms[bone_name][0],
-                    vmdutil.add_v(bone_def.position, position))
-            else:
-                parent_index = self.target_transform_bone_indexes[loop_i - 1]
-                parent_name = (
-                    self.bone_defs[self.TARGET][parent_index].name_jp)
-                parent_vmd = vmd_transforms[parent_name]
-                parent_bone_def = self.bone_defs[self.TARGET][parent_index]
-                global_transforms[bone_name] = get_global_transform(
-                    vmd_transforms[bone_name], bone_def,
-                    vmd_transforms[parent_name], parent_bone_def,
-                    global_transforms[parent_name])
-        return global_transforms[self.target_bone][1]  # position
+        bone_dict = self.target_transform.bone_name_to_index
+        global_target, vmd_target = self.target_transform.do_transform(
+            frame_no, bone_dict[self.target_bone])
+        return global_target[1]
 
     def get_target_pos(self, frame_no):
         if 'FIXED' == self.target_mode:
@@ -452,21 +300,6 @@ class LookAt():
             return self.get_target_camera_pos(frame_no)
         elif 'MODEL' == self.target_mode:
             return self.get_target_model_pos(frame_no)
-
-    def arrange_first_frame(self, first_frame):
-        for index in [self.WATCHER, self.TARGET]:
-            for bone_name in self.frame_dict[index]:
-                d = self.frame_dict[index][bone_name]
-                k = self.sorted_keyframes[index][bone_name]
-                if len(k) == 0:  # target_bone
-                    d[first_frame] = vmddef.BONE_SAMPLE._replace(
-                        name=bone_name, frame=first_frame)
-                    k.append(first_frame)
-                if first_frame != k[0]:
-                    d[first_frame] = d[
-                        self.first_frames[index][bone_name]]._replace(
-                        frame=first_frame)
-                    k.insert(0, first_frame)
 
     def check_ignore_case(self, body_dir, look_dir):
         if self.ignore_zone <= 0:
@@ -489,40 +322,15 @@ class LookAt():
         return turn
 
     def get_watcher_center_transform(self, frame_no):
-        bone_defs = self.bone_defs[self.WATCHER]
-        bone_dict = self.bone_dict[self.WATCHER]
-        transform_bone_names = self.watcher_transform_bone_names
-        if '全ての親' in transform_bone_names:
-            root_rotation, root_position = self.get_vmd_transform(
-                frame_no, '全ての親', self.WATCHER)
-            root_def = bone_defs[bone_dict['全ての親']]
-        else:
-            root_def = None
-        if 'センター' in transform_bone_names:
-            center_rotation, center_position = self.get_vmd_transform(
-                frame_no, 'センター', self.WATCHER)
-            center_def = bone_defs[bone_dict['センター']]
-        else:
-            center_def = None
-
-        if root_def is not None:
-            if center_def is not None:
-                global_center = get_global_transform(
-                    (center_rotation, center_position), center_def,
-                    (root_rotation, root_position), root_def,
-                    (root_rotation, root_position))
-            else:
-                global_center = (root_rotation, root_position)
-        else:
-            if center_def is not None:
-                global_center = (center_rotation, center_position)
-            else:
-                global_center = (vmdutil.QUATERNION_IDENTITY, (0, 0, 0))
+        bone_dict = self.watcher_transform.bone_name_to_index
+        global_center, vmd_center = self.watcher_transform.do_transform(
+            frame_no, bone_dict['センター'])
+        if global_center is None:
+            global_center = (vmdutil.QUATERNION_IDENTITY, (0, 0, 0))
         return global_center
 
     def get_face_rotation(
             self, frame_type, frame_no, bone_name, parent_name,
-            global_transforms, vmd_transforms,
             watcher_v, watcher_dir, watcher_pos, up,
             target_v, target_pos):
 
@@ -538,7 +346,6 @@ class LookAt():
 
     def get_arm_rotation(
             self, frame_type, frame_no, bone_name, parent_name,
-            global_transforms, vmd_transforms,
             watcher_v, watcher_dir, watcher_pos, watcher_axis, watcher_up,
             target_v, target_pos):
 
@@ -553,94 +360,73 @@ class LookAt():
     def make_look_at_frames(
             self, frame_type, frame_no, target_pos,
             next_frame_no, next_center_transform, next_target_pos):
-        vmd_transforms = {}
-        global_transforms = {}
         overwrite_frames = list()
-        bone_defs = self.bone_defs[self.WATCHER]
-        cpos = (0, 0, 0)
-        watcher_v = (0, 0, 0)
+        bone_defs = self.watcher_transform.bone_defs
+
         if next_frame_no is not None:
             target_v = vmdutil.sub_v(next_target_pos, target_pos)
             target_v = vmdutil.scale_v(
                 target_v, 1 / (next_frame_no - frame_no))
+
+        # center velocity
+            global_center, vmd_center = self.watcher_transform.do_transform(
+                frame_no, self.watcher_transform.bone_name_to_index['センター'])
+            cpos = global_center[1]
+            watcher_v = vmdutil.sub_v(next_center_transform[1], cpos)
+            watcher_v = vmdutil.scale_v(
+                watcher_v, 1 / (next_frame_no - frame_no))
         else:
             target_v = (0, 0, 0)
-        for loop_i, bone_index in enumerate(
-                self.watcher_transform_bone_indexes):
+            cpos = (0, 0, 0)
+            watcher_v = (0, 0, 0)
+
+        bone_graph = self.watcher_transform.transform_bone_graph
+        for bone_index in self.overwrite_indexes:
             bone_def = bone_defs[bone_index]
             bone_name = bone_def.name_jp
-            # vmd
-            if bone_name not in self.overwrite_bones:
-                rotation, position = self.get_vmd_transform(
-                    frame_no, bone_name, self.WATCHER)
-                vmd_transforms[bone_name] = (rotation, position)
-            else:  # overwrite
-                vmd_transforms[bone_name] = (
-                    vmdutil.QUATERNION_IDENTITY, [0, 0, 0])
-            # global position, rotation
-            if loop_i == 0:  # root
-                global_transforms[bone_name] = (
-                    vmd_transforms[bone_name][0],
-                    vmdutil.add_v(bone_def.position, position))
+            if bone_graph.in_degree(bone_index) > 0:
+                parent_index = next(iter(bone_graph.preds[bone_index]))
+                parent_name = bone_defs[parent_index].name_jp
+                global_parent, vmd_parent = (
+                    self.watcher_transform.do_transform(
+                        frame_no, parent_index))
+                _, neck_pos = vmdmotion.get_global_transform(
+                    (vmdutil.QUATERNION_IDENTITY, [0, 0, 0]), bone_def,
+                    vmd_parent, bone_defs[parent_index],
+                    global_parent)
             else:
-                parent_index = next(iter(
-                    self.watcher_bone_graph.preds[bone_index]))
-                parent_name = (
-                    self.bone_defs[self.WATCHER][parent_index].name_jp)
-                parent_vmd = vmd_transforms[parent_name]
-                parent_bone_def = self.bone_defs[self.WATCHER][parent_index]
-                global_transforms[bone_name] = get_global_transform(
-                    vmd_transforms[bone_name], bone_def,
-                    vmd_transforms[parent_name], parent_bone_def,
-                    global_transforms[parent_name])
-                if bone_name == 'センター' and next_frame_no is not None:
-                    cpos = global_transforms[bone_name][1]
-                    watcher_v = vmdutil.sub_v(next_center_transform[1], cpos)
-                    watcher_v = vmdutil.scale_v(
-                        watcher_v, 1 / (next_frame_no - frame_no))
-                if bone_name in self.overwrite_bones:
-                    neck_pos = global_transforms[bone_name][1]
-                    look_dir = vmdutil.sub_v(target_pos, neck_pos)
-                    base_dir = self.base_dirs[bone_index]
-                    base_dir = vmdutil.rotate_v3q(
-                        base_dir, global_transforms[parent_name][0])
+                # neck_pos = bone_def.position
+                raise Exception('overwrite bone should not be root.')
+            base_dir = self.base_dirs[bone_index]
+            base_dir = vmdutil.rotate_v3q(base_dir, global_parent[0])
 
-                    if (
-                        bone_def.flag & pmxdef.BONE_AXIS_IS_FIXED ==
-                            pmxdef.BONE_AXIS_IS_FIXED):
-                        axis = bone_def.fixed_axis
-                        up = vmdutil.rotate_v3q(
-                            axis, global_transforms[parent_name][0])
-                        hrot = self.get_arm_rotation(
-                            frame_type, frame_no, bone_name,
-                            parent_name,
-                            global_transforms, vmd_transforms,
-                            watcher_v, base_dir, neck_pos, axis, up,
-                            target_v, target_pos)
-                        if hrot is None:
-                            return []
-                    else:
-                        up = vmdutil.rotate_v3q(
-                            (0, 1, 0),
-                            global_transforms[parent_name][0])
-                        hrot = self.get_face_rotation(
-                            frame_type, frame_no, bone_name,
-                            parent_name,
-                            global_transforms, vmd_transforms,
-                            watcher_v, base_dir, neck_pos, up,
-                            target_v, target_pos)
-                        if hrot is None:
-                            return []
-                    vmd_transforms[bone_name] = (hrot, (0, 0, 0))
-                    global_transforms[bone_name] = get_global_transform(
-                        vmd_transforms[bone_name], bone_def,
-                        vmd_transforms[parent_name], parent_bone_def,
-                        global_transforms[parent_name])
-
-                    overwrite_frames.append(vmddef.BONE_SAMPLE._replace(
-                        frame=frame_no,
-                        name=bone_name.encode(vmddef.ENCODING),
-                        rotation=hrot))
+            if (
+                bone_def.flag & pmxdef.BONE_AXIS_IS_FIXED ==
+                    pmxdef.BONE_AXIS_IS_FIXED):
+                axis = bone_def.fixed_axis
+                up = vmdutil.rotate_v3q(axis, global_parent[0])
+                hrot = self.get_arm_rotation(
+                    frame_type, frame_no, bone_name,
+                    parent_name,
+                    watcher_v, base_dir, neck_pos, axis, up,
+                    target_v, target_pos)
+                if hrot is None:
+                    return []
+            else:
+                up = vmdutil.rotate_v3q((0, 1, 0), global_parent[0])
+                hrot = self.get_face_rotation(
+                    frame_type, frame_no, bone_name,
+                    parent_name,
+                    watcher_v, base_dir, neck_pos, up,
+                    target_v, target_pos)
+                if hrot is None:
+                    return []
+            self.watcher_transform.do_transform(
+                frame_no, bone_index, (hrot, (0, 0, 0)))
+            overwrite_frames.append(vmddef.BONE_SAMPLE._replace(
+                frame=frame_no,
+                name=bone_name.encode(vmddef.ENCODING),
+                rotation=hrot))
         return overwrite_frames
 
     def camera_delay(
@@ -663,7 +449,7 @@ class LookAt():
                     peek = queue.top()
                     if delay_to <= peek.frame_no:
                         break
-                    pop = queue.pop()
+                    queue.pop()
                 queue.push(MotionFrame(delay_to, 'r', -1, 'DELAY'))
                 return []
             else:
@@ -677,8 +463,6 @@ class LookAt():
         self.setup_watcher(queue)
         self.setup_target(queue)
         self.add_frames(queue)
-        first_frame = queue.top().frame_no
-        self.arrange_first_frame(first_frame)
         new_frames = list()
         prev_overwrites = {'frame_no': -1, 'frames': []}
         while True:
@@ -722,7 +506,11 @@ class LookAt():
                 prev_overwrites['frames'] = {
                     frame.name: frame for frame in overwrite_frames}
             new_frames.extend(overwrite_frames)
+            self.watcher_transform.delete(frame_no)
+            if 'MODEL' == self.target_mode:
+                self.target_transform.delete(frame_no)
         return new_frames
+
 
 if __name__ == '__main__':
     print('use trace_camera.py or trace_model.py.')
