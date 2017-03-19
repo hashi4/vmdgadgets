@@ -102,16 +102,12 @@ def get_spectrum(frameno, n_sample, wave_data):
     return np.abs(spectrum) * 2 / n_sample
 
 
-def clamp(v, min_v, max_v):
-    return max(min(v, max_v), min_v)
-
-
 def freq_ranges(nsample, rate, band_def):
     freqs = np.fft.fftfreq(nsample, 1 / rate)
     r = [i for i in freqs[1:] if i > 0]
 
     def c(v):
-        return clamp(v, 0, len(r))
+        return vmdutil.clamp(v, 0, len(r))
 
     ranges = list()
     for band in band_def[0]:
@@ -148,7 +144,7 @@ def mmd2wave_frame(mmd_frame, rate):
 
 def mag2scale(mag, mindb):
     if mag > 0:
-        db = clamp(mag2db(mag), mindb, 0)
+        db = vmdutil.clamp(mag2db(mag), mindb, 0)
     else:
         db = mindb
     return 1 - db / mindb

@@ -285,9 +285,6 @@ SINE2_CONTROLPOINTS = [
 
 def dot_v(v1, v2):
     return sum([i * j for i, j in zip(v1, v2)])
-# import functools
-# def dot_v(*p):
-#    return sum([functools.reduce(lambda x, y : x * y, c) for c in zip(*p)]])
 
 
 def cross_v3(v1, v2):
@@ -393,6 +390,18 @@ def look_at(v1dir, v1up, v2, gup=None):
     return (pitch_angle * pitch_sign,
             yaw_angle * yaw_sign,
             roll_angle * roll_sign)
+
+
+def look_at_fixed_axis(v1dir, v1up, v2, gup=None):
+    v1proj = project_to_plane_v(v1dir, v1up)
+    v2proj = project_to_plane_v(v2, v1up)
+    angle = angle_v(v1proj, v2proj)
+    if angle:
+        sign = 1 if dot_v(cross_v3(v1dir, v2proj), v1up) >= 0 else -1
+    else:
+        angle = 0
+        sign = 1
+    return angle * sign
 
 
 def transpose_m(m):
@@ -504,7 +513,7 @@ def euler_to_matrix(euler):
     ]
 
 
-def quaternion_to_euler(q):  #  for debug
+def quaternion_to_euler(q):  # for debug
     m = quaternion_to_matrix(q)
     # -sx = m[1][2]
     # sy/cy = m[0][2]/m[2][2]
@@ -588,6 +597,6 @@ def mirror_frame(frame, plane='yz'):
         return None  # not implemented
 
 
-def pp_q(q):  #  for debug
+def pp_q(q):  # for debug
     e = quaternion_to_euler(q)
     return [round(math.degrees(x), 4) for x in e]

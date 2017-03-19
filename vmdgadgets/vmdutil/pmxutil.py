@@ -1,6 +1,101 @@
 import heapq
 from .import pmxdef
 
+
+class Bonegraph():
+    # {parent: {child: {n: {key: attr}}}}
+    def __init__(self):
+        self.edges = {}
+        self.preds = {}
+
+    def add_edge(self, a, b, **attr):
+        if a not in self.edges:
+            self.edges[a] = {}
+        if b not in self.edges:
+            self.edges[b] = {}
+        if b not in self.edges[a]:
+            self.edges[a][b] = {}
+
+        if b not in self.preds:
+            self.preds[b] = {}
+        if a not in self.preds:
+            self.preds[a] = {}
+        if a not in self.preds[b]:
+            self.preds[b][a] = {}
+
+        l = len(self.edges[a][b])
+        self.edges[a][b][l] = {}
+        self.preds[b][a][l] = {}
+        for key in attr:
+            self.edges[a][b][l][key] = attr[key]
+            self.preds[b][a][l][key] = attr[key]
+        return
+
+    def remove_edge(self, a, b):
+        if a in self.edges and b in self.edges[a]:
+            del self.edges[a][b]
+            del self.preds[b][a]
+        return
+
+    def remove_node(self, n, reconnect=True):
+        preds = self.preds[n]
+        edges = self.edges[n]
+        if reconnect:
+            for pred in preds:
+                for edge in edges:
+                        self.add_edge(pred, edge)
+        for pred in preds:
+            del self.edges[pred][n]
+        for edge in edges:
+            del self.preds[edge][n]
+        del self.edges[n]
+        del self.preds[n]
+        return
+
+    def in_degree(self, node=None):
+        if node is None:
+            return [(node, self.in_degree(node)) for node in self.preds]
+        else:
+            return sum([len(self.preds[node][i]) for i in self.preds[node]])
+
+    def out_degree(self, node=None):
+        if node is None:
+            return [(node, self.out_degree(node)) for node in self.edges]
+        else:
+            return sum([len(self.edges[node][i]) for i in self.edges[node]])
+
+    def is_descendant(self, a, b, c=None):
+        if c == None:
+            c = a
+        elif c == a:
+            return False
+        for edge in self.edges[a]:
+            if b == edge:
+                return True
+            if self.is_descendant(edge, b, c):
+                return True
+        return False
+
+    def t_sort(self):
+        roots = [node for node, degree in self.in_degree() if degree == 0]
+        children = {
+            node: degree for node, degree in self.in_degree() if degree > 0}
+        heapq.heapify(roots)
+        result = list()
+        while len(roots) > 0:
+            node = heapq.heappop(roots)
+            for child in self.edges[node]:
+                children[child] -= len(self.edges[node][child])
+                if children[child] == 0:
+                    heapq.heappush(roots, child)
+                    del children[child]
+            result.append(node)
+        if len(children) > 0:
+            return None
+        else:
+            return result
+
+
 class Pmxio():
     def __init__(self):
         vindex = pmxdef.INDEX_FORMAT_VERTEX[1]
@@ -39,7 +134,7 @@ class Pmxio():
             c, size = pmxdef.unpack_count(self.buf, offset)
             offset += size
             if element == 'faces':
-                c = c._replace(count = c.count // 3)
+                c = c._replace(count=c.count // 3)
             self.counts[element] = c
             for index in range(self.counts[element].count):
                 obj, size = pmxdef.PMX_IO_UTIL[element][1](
@@ -89,6 +184,7 @@ class Pmxio():
         buf = self.to_bytes()
         writer.write(buf)
 
+
 def make_name_dict(elements):
     result = dict()
     for index, element in enumerate(elements):
@@ -97,7 +193,7 @@ def make_name_dict(elements):
 
 
 def make_bone_link(
-    bones, from_index, to_index, criteria=None, bone_list=None):
+        bones, from_index, to_index, criteria=None, bone_list=None):
     if bone_list is None:
         bone_list = list()
     if criteria is None or criteria(bones[from_index]):
@@ -109,6 +205,37 @@ def make_bone_link(
         return bone_list
     else:
         return make_bone_link(bones, parent, to_index, criteria, bone_list)
+
+
+def make_all_bone_link_graph(
+    bones, criteria=None, bone_graph=None):
+    if bone_graph is None:
+        bone_graph = Bonegraph()
+    for bone_index, bone_def in enumerate(bones):
+        if bone_def.parent > 0 and (criteria is None or criteria(bone_def)):
+            bone_graph.add_edge(bone_def.parent, bone_index)
+    return bone_graph
+
+
+def make_sub_bone_link_graph(
+    bones, from_index, to_indexes, criteria=None, bone_graph=None):
+    if bone_graph is None:
+        bone_graph = Bonegraph()
+    parents = set()
+    nodes = [node for node in bone_graph.edges]
+    for to_index in to_indexes:
+        to_bone = bones[to_index]
+        if to_index >= from_index and (criteria is None or criteria(to_bone)):
+            if to_bone.parent >= from_index:
+                bone_graph.add_edge(to_bone.parent, to_index)
+            if (to_bone.parent != from_index and
+                to_bone.parent not in nodes):
+                parents.add(to_bone.parent)
+    if len(parents) > 0:
+        return make_sub_bone_link_graph(
+            bones, from_index, parents, criteria, bone_graph)
+    else:
+        return bone_graph
 
 
 def get_transform_order(indexes, all_bones):
@@ -125,64 +252,3 @@ def get_transform_order(indexes, all_bones):
         return first_key(i), second_key(i), third_key(i)
 
     return sorted(indexes, key=key_func)
-
-
-class Bonegraph():
-    # {parent: {child: {n: {key: attr}}}}
-    def __init__(self):
-        self.edges = {}
-        self.preds = {}
-
-    def add_edge(self, a, b, **attr):
-        if a not in self.edges:
-            self.edges[a] = {}
-        if b not in self.edges:
-            self.edges[b] = {}
-        if b not in self.edges[a]:
-            self.edges[a][b] = {}
-
-        if b not in self.preds:
-            self.preds[b] = {}
-        if a not in self.preds:
-            self.preds[a] = {}
-        if a not in self.preds[b]:
-            self.preds[b][a] = {}
-
-        l = len(self.edges[a][b])
-        self.edges[a][b][l] = {}
-        self.preds[b][a][l] = {}
-        for key in attr:
-            self.edges[a][b][l][key] = attr[key]
-            self.preds[b][a][l][key] = attr[key]
-        return
-
-    def remove_edge(self, a, b):
-        if a in self.edges and b in self.edges[a]:
-            del self.edges[a][b]
-            del self.preds[b][a]
-
-    def in_degree(self, node=None):
-        if node is None:
-            return [(node, self.in_degree(node)) for node in self.preds]
-        else:
-            return sum([len(self.preds[node][i]) for i in self.preds[node]])
-
-    def t_sort(self):
-        roots = [node for node, degree in self.in_degree() if degree == 0]
-        children = {
-            node: degree for node, degree in self.in_degree() if degree > 0}
-        heapq.heapify(roots)
-        result = list()
-        print(roots)
-        while len(roots) > 0:
-            node = heapq.heappop(roots)
-            for child in self.edges[node]:
-                children[child] -= len(self.edges[node][child])
-                if children[child] == 0:
-                    heapq.heappush(roots, child)
-                    del children[child]
-            result.append(node)
-        if len(children) > 0:
-            return None
-        else:
-            return result
