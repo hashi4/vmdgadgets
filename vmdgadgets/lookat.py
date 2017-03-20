@@ -239,6 +239,12 @@ class LookAt():
         self.overwrite_indexes = [
             self.watcher_transform.bone_name_to_index[bone_name]
             for bone_name in self.overwrite_bones]
+        self.overwrite_indexes = pmxutil.get_transform_order(
+            self.overwrite_indexes, bone_defs)
+        self.overwrite_bones = [
+            bone_defs[bone_index].name_jp for
+            bone_index in self.overwrite_indexes]
+
 
         # make dir
         if 'ARM' == self.point_mode:
