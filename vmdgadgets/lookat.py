@@ -1,6 +1,7 @@
 import math
 import heapq
 import vmdutil
+import re
 from collections import namedtuple
 from vmdutil import vmddef
 from vmdutil import pmxutil
@@ -74,7 +75,7 @@ class LookAt():
         self.watcher_pmx_name = watcher_pmx_name
         self.watcher_vmd_name = watcher_vmd_name
         self.target_pos = (0, 0, 0)
-        self.frame_range = FrameRange()
+        self.frame_ranges = FrameRange()
         self.target_vmd_name = None
         self.target_pmx_name = None
         self.target_mode = 'FIXED'
@@ -120,8 +121,8 @@ class LookAt():
     def set_target_bone(self, bone_name):
         self.target_bone = bone_name
 
-    def set_frame_range(self, frame_ranges):
-        self.frame_range = FrameRange(frame_ranges)
+    def set_frame_ranges(self, frame_ranges):
+        self.frame_ranges = FrameRange(frame_ranges)
 
     def set_omega_limit(self, limit):
         self.omega_limit = limit
@@ -233,14 +234,18 @@ class LookAt():
             for index in self.overwrite_indexes:
                 self.base_dirs[index] = (0, 0, -1)
 
+        # queue frames
         for bone_index in self.watcher_transform.transform_bone_indexes:
             bone_def = bone_defs[bone_index]
             bone_name = bone_def.name_jp
-            if bone_name not in self.overwrite_bones:
-                for motion in (
-                        self.watcher_transform.motion_name_dict[bone_name]):
+            for motion in (
+                    self.watcher_transform.motion_name_dict[bone_name]):
+                if bone_name not in self.overwrite_bones:
                     queue.push(MotionFrame(
                         motion.frame, 'b', self.WATCHER, bone_name))
+                else:
+                    queue.push(MotionFrame(
+                        motion.frame, 'o', self.WATCHER, bone_name))
         return
 
     def setup_target(self, queue):
@@ -320,6 +325,16 @@ class LookAt():
                 -constraint_rad[i], constraint_rad[i])
                 for i in range(len(turn))]
         return turn
+
+    def copy_vmd_of_overwrite_bones(self, frame_no, frame_type):
+        if 'o' not in frame_type:
+            return []
+        new_frames = list()
+        for bone_name in self.overwrite_bones:
+            frame = self.watcher_transform.get_vmd_frame(frame_no, bone_name)
+            if frame is not None:
+                new_frames.append(frame)
+        return new_frames
 
     def get_watcher_center_transform(self, frame_no):
         bone_dict = self.watcher_transform.bone_name_to_index
@@ -465,6 +480,7 @@ class LookAt():
         self.add_frames(queue)
         new_frames = list()
         prev_overwrites = {'frame_no': -1, 'frames': []}
+        o_frame_pattern = re.compile('^o*$')
         while True:
             motion_frame = queue.pop()
             if motion_frame is None:
@@ -475,9 +491,12 @@ class LookAt():
                 dummy = queue.pop()
                 frame_type += dummy.type
 
-            if self.frame_range.is_over_max(frame_no):
-                break
-            if not self.frame_range.is_in_range(frame_no):
+            if not self.frame_ranges.is_in_range(frame_no):
+                new_frames.extend(
+                    self.copy_vmd_of_overwrite_bones(frame_no, frame_type))
+                continue
+
+            if o_frame_pattern.match(frame_type):
                 continue
 
             target_pos = self.get_target_pos(frame_no)

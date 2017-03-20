@@ -35,6 +35,10 @@ def _make_argumentparser():
         '--add_frames', nargs='*',
         metavar='frame_no',
         help='''Add frames to sync camera.''')
+    parser.add_argument(
+        '--frame_range', nargs=2, action='append',
+        metavar=('from', 'to'),
+        help='''set frame to track, other frames use vmd motion''')
     return parser
 
 
@@ -56,6 +60,11 @@ def trace_camera(args):
     if args.add_frames:
         frame_nos = [int(frame_no) for frame_no in args.add_frames]
         l.set_additional_frames(frame_nos)
+    if args.frame_range:
+        frame_ranges = []
+        for frange in args.frame_range:
+            frame_ranges.append((int(frange[0]), int(frange[1])))
+        l.set_frame_ranges(frame_ranges)
     heading_frames = l.look_at()
     vmdout = vmdutil.Vmdio()
     vmdout.set_frames('bones', heading_frames)

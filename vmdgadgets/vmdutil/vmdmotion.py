@@ -78,9 +78,9 @@ class BoneTransformation():
             self.transform_bone_graph.out_degree(bone_index) == 0]
 
         self.motion_frame_dict = {  # {bone_name: {frame_no: motion_def}}
-            bone_name:
-            {motion.frame: motion
-             for motion in self.motion_name_dict[bone_name]}
+            bone_name: {
+                motion.frame: motion
+                for motion in self.motion_name_dict[bone_name]}
             for bone_name in self.transform_bone_names if
             bone_name in self.motion_name_dict}
         self.sorted_keyframes = {  # {bone_name: [frame_no]} for bisect
@@ -137,7 +137,15 @@ class BoneTransformation():
         else:
             return None
 
+    def get_vmd_frame(self, frame_no, bone_name):
+        # Return frame if the frame_no in vmd, otherwise return None
+        d = self.motion_frame_dict.get(bone_name)
+        return None if d is None else (
+            self.motion_frame_dict[bone_name].get(frame_no))
+
     def get_vmd_index(self, frame_no, bone_name):
+        # Return index or closest below index of the frame_no
+        # in sorted list of vmd keyframes
         keys = self.sorted_keyframes[bone_name]
         index = bisect.bisect_left(keys, frame_no)
         if index <= len(keys) - 1 and keys[index] == frame_no:
