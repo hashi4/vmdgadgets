@@ -89,6 +89,11 @@ class LookAt():
             '頭': [(30, 40, 20), (1, 1, .8)],
             '両目': [(20, 30, 0), (1, 1, 0)],
         }
+        self.vmd_blend_ratios = {
+            '首': 0,
+            '頭': 0,
+            '両目': 0,
+        }
         self.ignore_zone = math.radians(140)
         self.global_up = (0, 1, 0)
         self.omega_limit = math.pi / 40
@@ -134,12 +139,21 @@ class LookAt():
         if bone_name in self.constraints:
             self.constraints[bone_name] = constraint
 
+    def set_vmd_blend_ratio(self, bone_name, ratio):
+        self.vmd_blend_ratios[bone_name] = ratio
+
     def set_additional_frames(self, frame_nos):
         self.additional_frame_nos = frame_nos
 
     def add_frames(self, queue):
         for frame_no in self.additional_frame_nos:
             queue.push(MotionFrame(frame_no, 'u', -1, 'A'))
+
+    def need_vmd_blend(self):
+        for r in self.vmd_blend_ratios.values():
+            if r > 0:
+                return True
+        return False
 
     def load(self):
         self.watcher_pmx = pmxutil.Pmxio()
@@ -396,6 +410,7 @@ class LookAt():
             watcher_v = (0, 0, 0)
 
         bone_graph = self.watcher_transform.transform_bone_graph
+        vmd_blend = self.need_vmd_blend()
         for bone_index in self.overwrite_indexes:
             bone_def = bone_defs[bone_index]
             bone_name = bone_def.name_jp
@@ -436,6 +451,12 @@ class LookAt():
                     target_v, target_pos)
                 if hrot is None:
                     return []
+            if vmd_blend:
+                ratio = self.vmd_blend_ratios.get(bone_name, 0)
+                if ratio > 0:
+                    vmd_rot = self.watcher_transform.get_vmd_transform(
+                        frame_no, bone_index)[0]
+                    hrot = tuple(vmdutil.slerp_q(hrot, vmd_rot, ratio))
             self.watcher_transform.do_transform(
                 frame_no, bone_index, (hrot, (0, 0, 0)))
             overwrite_frames.append(vmddef.BONE_SAMPLE._replace(
@@ -481,6 +502,8 @@ class LookAt():
         new_frames = list()
         prev_overwrites = {'frame_no': -1, 'frames': []}
         o_frame_pattern = re.compile('^o*$')
+        vmd_blend = self.need_vmd_blend();
+
         while True:
             motion_frame = queue.pop()
             if motion_frame is None:
@@ -496,7 +519,7 @@ class LookAt():
                     self.copy_vmd_of_overwrite_bones(frame_no, frame_type))
                 continue
 
-            if o_frame_pattern.match(frame_type):
+            if not vmd_blend and o_frame_pattern.match(frame_type):
                 continue
 
             target_pos = self.get_target_pos(frame_no)

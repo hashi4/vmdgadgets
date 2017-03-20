@@ -30,7 +30,7 @@ def _make_argumentparser():
     parser.add_argument(
         '--constraint', nargs=7, action='append',
         metavar=('bone_name', 'x', 'y', 'z', 'scale_x', 'sacle_y', 'scale_z'),
-        help='''make constraint to bone rotation xyz=degrees''')
+        help='''make constraint to bone rotation. xyz=degrees''')
     parser.add_argument(
         '--add_frames', nargs='*',
         metavar='frame_no',
@@ -38,7 +38,11 @@ def _make_argumentparser():
     parser.add_argument(
         '--frame_range', nargs=2, action='append',
         metavar=('from', 'to'),
-        help='''set frame to track, other frames use vmd motion''')
+        help='''set frame range to track, other frames use vmd motion.''')
+    parser.add_argument(
+        '--vmd_blend', nargs=2, action='append',
+        metavar=('bone_name', 'blend_ratio'),
+        help='''blend vmd motion to tracking motion.''')
     return parser
 
 
@@ -65,6 +69,9 @@ def trace_camera(args):
         for frange in args.frame_range:
             frame_ranges.append((int(frange[0]), int(frange[1])))
         l.set_frame_ranges(frame_ranges)
+    if args.vmd_blend:
+        for blend in args.vmd_blend:
+            l.set_vmd_blend_ratio(blend[0], float(blend[1]))
     heading_frames = l.look_at()
     vmdout = vmdutil.Vmdio()
     vmdout.set_frames('bones', heading_frames)
