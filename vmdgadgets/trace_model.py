@@ -1,4 +1,3 @@
-import sys
 import argparse
 import math
 import vmdutil
@@ -43,8 +42,8 @@ def _make_argumentparser():
         metavar=('from', 'to'),
         help='''set frame range to track, other frames use vmd motion.''')
     parser.add_argument(
-        '--vmd_blend', nargs=2, action='append',
-        metavar=('bone_name', 'blend_ratio'),
+        '--vmd_blend', nargs=4, action='append',
+        metavar=('bone_name', 'blend_ratio x', 'y', 'z'),
         help='''blend vmd motion to tracking motion.''')
     return parser
 
@@ -75,7 +74,8 @@ def trace_model(args):
         l.set_frame_ranges(frame_ranges)
     if args.vmd_blend:
         for blend in args.vmd_blend:
-            l.set_vmd_blend_ratio(blend[0], float(blend[1]))
+            l.set_vmd_blend_ratio(
+                blend[0], (float(blend[1]), float(blend[2]), float(blend[3])))
     heading_frames = l.look_at()
     vmdout = vmdutil.Vmdio()
     vmdout.set_frames('bones', heading_frames)

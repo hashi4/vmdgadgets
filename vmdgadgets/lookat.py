@@ -90,9 +90,9 @@ class LookAt():
             '両目': [(20, 30, 0), (1, 1, 0)],
         }
         self.vmd_blend_ratios = {
-            '首': 0,
-            '頭': 0,
-            '両目': 0,
+            '首': (0, 0, 0),
+            '頭': (0, 0, 0),
+            '両目': (0, 0, 0),
         }
         self.ignore_zone = math.radians(140)
         self.global_up = (0, 1, 0)
@@ -150,9 +150,10 @@ class LookAt():
             queue.push(MotionFrame(frame_no, 'u', -1, 'A'))
 
     def need_vmd_blend(self):
-        for r in self.vmd_blend_ratios.values():
-            if r > 0:
-                return True
+        for b in self.vmd_blend_ratios.values():
+            for r in b:
+                if r > 0:
+                    return True
         return False
 
     def load(self):
@@ -244,7 +245,6 @@ class LookAt():
         self.overwrite_bones = [
             bone_defs[bone_index].name_jp for
             bone_index in self.overwrite_indexes]
-
 
         # make dir
         if 'ARM' == self.point_mode:
@@ -375,6 +375,15 @@ class LookAt():
 
         turn = vmdutil.look_at(
             watcher_dir, up, look_dir, self.global_up)
+        if self.need_vmd_blend():
+            bone_index = self.watcher_transform.bone_name_to_index[bone_name]
+            ratio = self.vmd_blend_ratios.get(bone_name, (0, 0, 0))  # TODO
+            if ratio[0] > 0 or ratio[1] > 0 or ratio[2] > 0:
+                vmd_rot = self.watcher_transform.get_vmd_transform(
+                    frame_no, bone_index)[0]
+                euler = vmdutil.quaternion_to_euler(vmd_rot)  # TODO
+                euler = [e * r for e, r in zip(euler, ratio)]
+                turn = [t + e for t, e in zip(turn, euler)]
         turn = self.apply_constraints(bone_name, turn)
         hrot = tuple(vmdutil.euler_to_quaternion(turn))
         return hrot
@@ -416,7 +425,6 @@ class LookAt():
             watcher_v = (0, 0, 0)
 
         bone_graph = self.watcher_transform.transform_bone_graph
-        vmd_blend = self.need_vmd_blend()
         for bone_index in self.overwrite_indexes:
             bone_def = bone_defs[bone_index]
             bone_name = bone_def.name_jp
@@ -457,12 +465,6 @@ class LookAt():
                     target_v, target_pos)
                 if hrot is None:
                     return []
-            if vmd_blend:
-                ratio = self.vmd_blend_ratios.get(bone_name, 0)
-                if ratio > 0:
-                    vmd_rot = self.watcher_transform.get_vmd_transform(
-                        frame_no, bone_index)[0]
-                    hrot = tuple(vmdutil.slerp_q(hrot, vmd_rot, ratio))
             self.watcher_transform.do_transform(
                 frame_no, bone_index, (hrot, (0, 0, 0)))
             overwrite_frames.append(vmddef.BONE_SAMPLE._replace(
@@ -508,7 +510,7 @@ class LookAt():
         new_frames = list()
         prev_overwrites = {'frame_no': -1, 'frames': []}
         o_frame_pattern = re.compile('^o*$')
-        vmd_blend = self.need_vmd_blend();
+        vmd_blend = self.need_vmd_blend()
 
         while True:
             motion_frame = queue.pop()
