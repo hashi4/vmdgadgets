@@ -236,6 +236,9 @@ class CameraTransformation():
         self.motion_frame_dict = vmdutil.frames_to_dict(motion_defs)
         self.sorted_keyframes = [m.frame for m in self.sorted_motions]
 
+    def get_vmd_frame(self, frame_no):
+        return self.motion_frame_dict.get(frame_no)
+
     def get_vmd_index(self, frame_no):
         keys = self.sorted_keyframes
         index = bisect.bisect_left(keys, frame_no)
