@@ -457,7 +457,7 @@ def pack_bone_local_axies(header, flag, p):
 def unpack_bone_ex_parent(header, flag, buf, offset=0):
     if flag & BONE_EXTERNAL_PARENT == BONE_EXTERNAL_PARENT:
         return struct.unpack_from(
-            '<1i', buff, offset), struct.calcsize('<1i')
+            '<1i', buf, offset), struct.calcsize('<1i')
     else:
         return None, 0
 
@@ -699,6 +699,7 @@ def pack_impulse_morph(header, p):
         INDEX_FORMAT[header.material_isize])
     return struct.pack(pack_format, *flatten_composite(*p))
 
+
 MORPH_FUNCTIONS = (
     # 0 group morph
     (unpack_group_morph, pack_group_morph),
@@ -812,6 +813,7 @@ def pack_disp_node(header, p):
                 pack_format.format(INDEX_FORMAT[header.morph_isize]),
                 *item)
     return result
+
 
 # ###
 # rigid bodies

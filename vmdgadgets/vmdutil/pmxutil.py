@@ -65,7 +65,7 @@ class Bonegraph():
             return sum([len(self.edges[node][i]) for i in self.edges[node]])
 
     def is_descendant(self, a, b, c=None):
-        if c == None:
+        if c is None:
             c = a
         elif c == a:
             return False
@@ -208,7 +208,7 @@ def make_bone_link(
 
 
 def make_all_bone_link_graph(
-    bones, criteria=None, bone_graph=None):
+        bones, criteria=None, bone_graph=None):
     if bone_graph is None:
         bone_graph = Bonegraph()
     for bone_index, bone_def in enumerate(bones):
@@ -218,7 +218,7 @@ def make_all_bone_link_graph(
 
 
 def make_sub_bone_link_graph(
-    bones, from_index, to_indexes, criteria=None, bone_graph=None):
+        bones, from_index, to_indexes, criteria=None, bone_graph=None):
     if bone_graph is None:
         bone_graph = Bonegraph()
     parents = set()
@@ -229,7 +229,7 @@ def make_sub_bone_link_graph(
             if to_bone.parent >= from_index:
                 bone_graph.add_edge(to_bone.parent, to_index)
             if (to_bone.parent != from_index and
-                to_bone.parent not in nodes):
+               to_bone.parent not in nodes):
                 parents.add(to_bone.parent)
     if len(parents) > 0:
         return make_sub_bone_link_graph(

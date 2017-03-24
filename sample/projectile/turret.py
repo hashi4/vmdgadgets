@@ -116,7 +116,7 @@ def upper_to_camera_seq1():
     s1.set_target_vmd(CAMERA)
     s1.set_fire_frames(ALL_FIRE_FRAMES)
     s1.set_additional_frames([120])
-    s1.set_frame_range([SEQ1_RANGE])
+    s1.set_frame_ranges([SEQ1_RANGE])
     s1.bullets_dir = BULLETS_DIR
     frames = s1.look_at()
     return frames
@@ -132,7 +132,7 @@ def upper_to_drone_seq2():
     s1.set_fire_frames(ALL_FIRE_FRAMES)
     s1.set_tracking_mode('P')
     s1.set_additional_frames([1350])
-    s1.set_frame_range([SEQ2_RANGE])
+    s1.set_frame_ranges([SEQ2_RANGE])
     s1.bullets_dir = BULLETS_DIR
     frames = s1.look_at()
     return frames
@@ -148,7 +148,7 @@ def lower_to_drone_seq2():
     s1.set_fire_frames(ALL_FIRE_FRAMES)
     s1.set_tracking_mode('P')
     s1.set_additional_frames([1350])
-    s1.set_frame_range([SEQ2_RANGE])
+    s1.set_frame_ranges([SEQ2_RANGE])
     s1.bullets_dir = BULLETS_DIR
     frames = s1.look_at()
     return frames
@@ -162,7 +162,7 @@ def upper_to_camera_seq3():
     s1.set_fire_frames(ALL_FIRE_FRAMES)
     s1.set_tracking_mode('P')
     s1.set_projection_mode('T')
-    s1.set_frame_range([SEQ3_RANGE])
+    s1.set_frame_ranges([SEQ3_RANGE])
     s1.bullets_dir = BULLETS_DIR
     frames = s1.look_at()
     return frames
@@ -198,7 +198,7 @@ def face_camera():
     s1.set_target_vmd(CAMERA)
     s1.set_constraint('両目', [(20, 30, 0), (0.1, 0.1, 0)])
     s1.set_additional_frames([120])
-    s1.set_frame_range([SEQ1_RANGE, (1251, 1350)])
+    s1.set_frame_ranges([SEQ1_RANGE, (1251, 1350)])
     frames = s1.look_at()
     return frames
 
@@ -209,7 +209,7 @@ def face_drone():
     s2.set_target_vmd(DRONE_MOTION)
     s2.set_target_bone('センター')
     s2.set_additional_frames([350, 1250])
-    s2.set_frame_range([SEQ2_RANGE])
+    s2.set_frame_ranges([SEQ2_RANGE])
     return s2.look_at()
 
 

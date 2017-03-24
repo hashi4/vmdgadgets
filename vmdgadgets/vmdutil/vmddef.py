@@ -3,7 +3,6 @@
 from collections import namedtuple
 import struct
 import codecs
-import math
 
 ENCODING = 'shift-jis'
 LEFT = '左'
@@ -29,6 +28,7 @@ def unpack_header(buf, offset=0):
 def pack_header(p):
     return header_def.pack(*p)
 
+
 #
 # typedef struct VmdCount_t {
 #     uint32_t count;
@@ -45,6 +45,7 @@ def unpack_count(buf, offset=0):
 
 def pack_count(p):
     return count_def.pack(*p)
+
 
 # typedef struct VmdBoneFrame_t {
 #     char name[15];
@@ -82,6 +83,7 @@ def bone_vmdformat_to_controlpoints(interpolation):
     offset = 16
     result = [[interpolation[i + offset * j] for j in range(4)] for i in pos]
     return result
+
 
 BONE_LERP_CONTROLPOINTS = [
     [20, 20, 20, 20], [20, 20, 20, 20],
@@ -154,6 +156,7 @@ def unpack_morph(buf, offset=0):
 
 def pack_morph(p):
     return morph_def.pack(*p)
+
 
 # typedef struct VmdCameraFrame {
 #     uint32_t frame;
@@ -243,6 +246,7 @@ def pack_light(p):
     expanded = (p.frame,) + p.rgb + p.direction
     return light_def.pack(*expanded)
 
+
 LIGHT_SAMPLE = light(
     frame=0, rgb=(0.6019999980926514, 0.6019999980926514, 0.6019999980926514),
     direction=(-0.5, -1.0, 0.5))
@@ -266,11 +270,11 @@ def unpack_selfshadow(buf, offset=0):
 def pack_selfshadow(p):
     return selfshadow_def.pack(*p)
 
+
 # typedef struct VmdIKInfo_t {
 #     char name[20];
 #     uint8_t on_off;
 # } VmdIKInfo;
-
 ikinfo_def = struct.Struct('<20s1B')
 ikinfo = namedtuple('ikinfo', 'name on_off')
 
@@ -283,6 +287,7 @@ def unpack_ikinfo(buf, offset=0):
 def pack_ikinfo(p):
     return ikinfo_def.pack(*p)
 
+
 # typedef struct VmdShowIKFrame_t {
 #     uint32_t frame;
 #     uint8_t show;
@@ -290,7 +295,6 @@ def pack_ikinfo(p):
 #     VmdIKInfo iks[];
 # } VmdShowIKFrame;
 # # pragma pack()
-
 showik_def = struct.Struct('<1I1B1I')
 showik = namedtuple('showik', 'frame show ik_count iks')
 
@@ -314,6 +318,7 @@ def pack_showik(p):
         buf += pack_ikinfo(ik)
     return buf
 
+
 dummy_struct = struct.Struct('')
 
 
@@ -323,6 +328,7 @@ def dummy_unpack(buf, offset=0):
 
 def dummy_pack(p):
     return b''
+
 
 VMD_ELEMENTS = (
     'bones', 'morphs', 'cameras', 'lights',

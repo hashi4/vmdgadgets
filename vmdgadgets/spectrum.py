@@ -31,6 +31,7 @@ def _make_argumentparser():
         metavar='config filename', help='configuration filename')
     return parser
 
+
 _parser = _make_argumentparser()
 __doc__ += _parser.format_help()
 
@@ -58,7 +59,7 @@ def struct_format(width, samples):
 
 def read_wave(f):
     if not check_waveformat(f):
-        raise ValueEror('only supports 8 and 16bit format')
+        raise Exception('only supports 8 and 16bit format')
     rate = f.getframerate()
     frames = f.getnframes()
     channels = f.getnchannels()
@@ -354,6 +355,7 @@ def fft_wave_fname(infile, config):
         return
     else:
         fft_wave(infile, conf)
+
 
 if __name__ == '__main__':
     args = _parser.parse_args()

@@ -4,8 +4,6 @@ import os
 
 import vmdutil
 from vmdutil import vmddef
-from vmdutil import pmxdef
-from vmdutil import vmdmotion
 from lookat import LookAt, MotionFrame
 
 FPS = 30
@@ -53,6 +51,7 @@ def replace_controlpoints(cp_all, cp, index):
     for i in range(4):
         cp_all[i][index] = cp[i]
     return cp_all
+
 
 cp_all = vmddef.BONE_LERP_CONTROLPOINTS
 replace_controlpoints(cp_all, vmdutil.PARABOLA2_CONTROLPOINTS, 1)
@@ -136,7 +135,8 @@ class Projectile(LookAt):
             watcher_dir, up, vmdutil.normalize_v(v))
         hrot = tuple(vmdutil.quaternion(axis, angle))
         bone_index = self.watcher_transform.bone_name_to_index[bone_name]
-        if bone_index in self.watcher_transform.leaf_indexes and 'f' in frame_type:
+        if (bone_index in self.watcher_transform.leaf_indexes and
+           'f' in frame_type):
             self.export_bullet_motion(
                 frame_no, bone_index, watcher_pos, v, t, c_pos)
         return hrot
