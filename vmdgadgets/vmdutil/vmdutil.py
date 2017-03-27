@@ -579,7 +579,7 @@ def mirror_frame(frame, plane='yz'):
     if 'yz' == plane:
         pos = (-frame.position[0], frame.position[1], frame.position[2])
         if 'name' in frame._fields:
-            rotation = mirror_quaternion(frame.rotation, plane)
+            rotation = tuple(mirror_quaternion(frame.rotation, plane))
             new_name = b_to_str(frame.name)
             if new_name[0] == vmddef.RIGHT:
                 new_name = vmddef.LEFT + new_name[1:]
