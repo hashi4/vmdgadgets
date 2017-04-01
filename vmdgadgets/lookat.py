@@ -337,10 +337,13 @@ class LookAt():
             body_dir_y, look_dir_y)
         return angle_around_y > self.ignore_zone
 
-    def apply_constraints(self, bone_name, turn):
+    def scale_turn(self, bone_name, turn):
         constraint = self.constraints[bone_name]
-        constraint_rad = self.constraints_rad[bone_name]
         turn = [k * j for k, j in zip(turn, constraint[1])]
+        return turn
+
+    def apply_constraints(self, bone_name, turn):
+        constraint_rad = self.constraints_rad[bone_name]
         turn = [vmdutil.clamp(turn[i],
                 -constraint_rad[i], constraint_rad[i])
                 for i in range(len(turn))]
@@ -375,6 +378,7 @@ class LookAt():
 
         turn = vmdutil.look_at(
             watcher_dir, up, look_dir, self.global_up)
+        turn = self.scale_turn(bone_name, turn)
         if self.need_vmd_blend():
             bone_index = self.watcher_transform.bone_name_to_index[bone_name]
             ratio = self.vmd_blend_ratios.get(bone_name, (0, 0, 0))  # TODO
