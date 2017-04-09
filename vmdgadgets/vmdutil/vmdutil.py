@@ -575,6 +575,17 @@ def interpolate_camera_distance(frame_no, begin, end):
     return lerp_v([begin.distance], [end.distance], by)[0]
 
 
+def interpolate_camera_angle_of_view(frame_no, begin, end):
+    cp = vmddef.camera_vmdformat_to_controlpoints(end.interpolation)
+    cpf = [[p[axis] / 127.0 for p in cp] for axis in range(len(cp[0]))]
+    bx = (frame_no - begin.frame) / (end.frame - begin.frame)
+    xcp = [0.0, cpf[5][0], cpf[5][2], 1.0]
+    t = vmdbezier.bezier3f_x2t(xcp, bx)
+    ycp = [0.0, cpf[5][1], cpf[5][3], 1.0]
+    by = vmdbezier.bezier3f(ycp, t)
+    return lerp_v([begin.angle_of_view], [end.angle_of_view], by)[0]
+
+
 def mirror_frame(frame, plane='yz'):
     if 'yz' == plane:
         pos = (-frame.position[0], frame.position[1], frame.position[2])

@@ -307,15 +307,16 @@ class LookAt():
         return vmdutil.add_v(position, direction)
 
     def get_target_camera_pos(self, frame_no):
-        rotation, position, distance = self.target_transform.get_vmd_transform(
-            frame_no)
+        rotation, position, distance, angle_of_view = (
+            self.target_transform.get_vmd_transform(frame_no))
         pos = self.get_camera_pos(rotation, position, distance)
         return pos
 
     def get_target_model_pos(self, frame_no):
         bone_dict = self.target_transform.bone_name_to_index
-        global_target, vmd_target = self.target_transform.do_transform(
-            frame_no, bone_dict[self.target_bone])
+        global_target, vmd_target, additional_transform = (
+            self.target_transform.do_transform(
+                frame_no, bone_dict[self.target_bone]))
         return global_target[1]
 
     def get_target_pos(self, frame_no):
@@ -361,8 +362,8 @@ class LookAt():
 
     def get_watcher_center_transform(self, frame_no):
         bone_dict = self.watcher_transform.bone_name_to_index
-        global_center, vmd_center = self.watcher_transform.do_transform(
-            frame_no, bone_dict['センター'])
+        global_center, vmd_center, additional_center = (
+            self.watcher_transform.do_transform(frame_no, bone_dict['センター']))
         if global_center is None:
             global_center = (vmdutil.QUATERNION_IDENTITY, (0, 0, 0))
         return global_center
@@ -417,8 +418,10 @@ class LookAt():
                 target_v, 1 / (next_frame_no - frame_no))
 
         # center velocity
-            global_center, vmd_center = self.watcher_transform.do_transform(
-                frame_no, self.watcher_transform.bone_name_to_index['センター'])
+            global_center, vmd_center, add_center = (
+                self.watcher_transform.do_transform(
+                    frame_no,
+                    self.watcher_transform.bone_name_to_index['センター']))
             cpos = global_center[1]
             watcher_v = vmdutil.sub_v(next_center_transform[1], cpos)
             watcher_v = vmdutil.scale_v(
@@ -435,13 +438,15 @@ class LookAt():
             if bone_graph.in_degree(bone_index) > 0:
                 parent_index = next(iter(bone_graph.preds[bone_index]))
                 parent_name = bone_defs[parent_index].name_jp
-                global_parent, vmd_parent = (
+                global_parent, vmd_parent, add_parent = (
                     self.watcher_transform.do_transform(
                         frame_no, parent_index))
+                add_trans = self.watcher_transform.get_additional_transform(
+                    frame_no, bone_index)
                 _, neck_pos = vmdmotion.get_global_transform(
                     (vmdutil.QUATERNION_IDENTITY, [0, 0, 0]), bone_def,
                     vmd_parent, bone_defs[parent_index],
-                    global_parent)
+                    global_parent, add_trans)
             else:
                 # neck_pos = bone_def.position
                 raise Exception('overwrite bone should not be root.')

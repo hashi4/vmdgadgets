@@ -43,7 +43,7 @@ def _make_argumentparser():
         help='''set frame range to track, other frames use vmd motion.''')
     parser.add_argument(
         '--vmd_blend', nargs=4, action='append',
-        metavar=('bone_name', 'blend_ratio x', 'y', 'z'),
+        metavar=('bone_name', 'blend_ratio_x', 'y', 'z'),
         help='''blend vmd motion to tracking motion.''')
     return parser
 

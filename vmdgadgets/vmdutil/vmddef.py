@@ -170,7 +170,7 @@ def pack_morph(p):
 camera_def = struct.Struct('<1I1f3f3f24B1I1B')
 camera = namedtuple(
     'camera',
-    'frame distance position rotation interpolation viewing_angle perspective')
+    'frame distance position rotation interpolation angle_of_view perspective')
 
 
 def unpack_camera(buf, offset=0):
@@ -182,7 +182,7 @@ def unpack_camera(buf, offset=0):
 def pack_camera(p):
     expanded = (p.frame, p.distance)\
         + p.position + p.rotation + p.interpolation\
-        + (p.viewing_angle, p.perspective)
+        + (p.angle_of_view, p.perspective)
     return camera_def.pack(*expanded)
 
 

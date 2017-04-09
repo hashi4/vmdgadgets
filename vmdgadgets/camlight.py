@@ -75,8 +75,8 @@ def camlight(vmdin, against=None, rx=0.0, ry=0.0, rgb=RGB, add_frames=None):
         for frame_no in add_frames:
             frame_no = int(frame_no)
             if camera_motion.get_vmd_frame(frame_no) is None:
-                rotation, position, distance = camera_motion.get_vmd_transform(
-                    frame_no)
+                rotation, position, distance, angle_of_view = (
+                    camera_motion.get_vmd_transform(frame_no))
                 camera_frame = vmddef.camera(
                     frame_no, distance, position, rotation, None, None, None)
                 light_frames.append(

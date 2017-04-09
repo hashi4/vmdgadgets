@@ -212,28 +212,35 @@ def make_all_bone_link_graph(
     if bone_graph is None:
         bone_graph = Bonegraph()
     for bone_index, bone_def in enumerate(bones):
-        if bone_def.parent > 0 and (criteria is None or criteria(bone_def)):
+        if bone_def.parent >= 0 and (criteria is None or criteria(bone_def)):
             bone_graph.add_edge(bone_def.parent, bone_index)
     return bone_graph
 
 
 def make_sub_bone_link_graph(
-        bones, from_index, to_indexes, criteria=None, bone_graph=None):
+        bone_defs, from_index, to_indexes, criteria=None, bone_graph=None):
     if bone_graph is None:
         bone_graph = Bonegraph()
     parents = set()
     nodes = [node for node in bone_graph.edges]
     for to_index in to_indexes:
-        to_bone = bones[to_index]
+        to_bone = bone_defs[to_index]
         if to_index >= from_index and (criteria is None or criteria(to_bone)):
             if to_bone.parent >= from_index:
                 bone_graph.add_edge(to_bone.parent, to_index)
             if (to_bone.parent != from_index and
                to_bone.parent not in nodes):
                 parents.add(to_bone.parent)
+            # additional transform
+            if to_bone.flag & pmxdef.BONE_ADD_LOCAL == pmxdef.BONE_ADD_LOCAL:
+                raise Exception('local addition is not supported.')
+            if ((to_bone.flag &
+               (pmxdef.BONE_ADD_ROTATE | pmxdef.BONE_ADD_ROTATE) > 0) and
+               to_bone.additional_transform.parent not in nodes):
+                parents.add(to_bone.additional_transform.parent)
     if len(parents) > 0:
         return make_sub_bone_link_graph(
-            bones, from_index, parents, criteria, bone_graph)
+            bone_defs, from_index, parents, criteria, bone_graph)
     else:
         return bone_graph
 
