@@ -5,6 +5,7 @@ import math
 import bisect
 from collections import defaultdict
 from collections import Iterable
+from functools import wraps
 from . import vmddef
 from . import vmdbezier
 
@@ -288,11 +289,7 @@ def dot_v(v1, v2):
 
 
 def cross_v3(v1, v2):
-    def e(x, y):
-        return v1[x] * v2[y] - v1[y] * v2[x]
-
-    return [e(*p) for p in [[(i + j) % 3 for j in range(1, 3)]
-            for i in range(3)]]
+    return [v1[i - 1] * v2[i] - v1[i] * v2[i - 1] for i in (2, 0, 1)]
 
 
 def scale_v(v, scale):
@@ -359,6 +356,12 @@ def angle_v(v1, v2):
             norm_v(cross_v3(v1, v2)), dot_v(v1, v2))
 
 
+def to_degrees(f):
+    def wrapper(*args, **kwargs):
+        return math.degrees(f(*args, **kwargs))
+    return wraps(f)(wrapper)
+
+
 def lerp_v(v1, v2, t):
     vr = scale_v(sub_v(v2, v1), t)
     return add_v(v1, vr)
@@ -405,7 +408,7 @@ def look_at_fixed_axis(v1dir, v1up, v2, gup=None):
 
 
 def transpose_m(m):
-    return [[i[j] for i in m] for j in range(len(m[0]))]
+    return [i for i in map(list, zip(*m))]
 
 
 def dot_m(m1, m2):
