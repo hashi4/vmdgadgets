@@ -155,6 +155,11 @@ class BoneTransformation():
         else:
             return None
 
+    def delete_descendants(self, frame_no, bone_index):
+        descendants = self.transform_bone_graph.get_descendants(bone_index)
+        for child_bone in descendants:
+            self.delete(frame_no, child_bone)
+
     def get_vmd_frame(self, frame_no, bone_name):
         # Return frame if the frame_no in vmd, otherwise return None
         d = self.motion_frame_dict.get(bone_name)

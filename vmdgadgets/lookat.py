@@ -380,15 +380,6 @@ class LookAt():
         turn = vmdutil.look_at(
             watcher_dir, up, look_dir, self.global_up)
         turn = self.scale_turn(bone_name, turn)
-        if self.need_vmd_blend():
-            bone_index = self.watcher_transform.bone_name_to_index[bone_name]
-            ratio = self.vmd_blend_ratios.get(bone_name, (0, 0, 0))  # TODO
-            if ratio[0] > 0 or ratio[1] > 0 or ratio[2] > 0:
-                vmd_rot = self.watcher_transform.get_vmd_transform(
-                    frame_no, bone_index)[0]
-                euler = vmdutil.quaternion_to_euler(vmd_rot)  # TODO
-                euler = [e * r for e, r in zip(euler, ratio)]
-                turn = [t + e for t, e in zip(turn, euler)]
         turn = self.apply_constraints(bone_name, turn)
         hrot = tuple(vmdutil.euler_to_quaternion(turn))
         return hrot
@@ -406,9 +397,54 @@ class LookAt():
         hrot = tuple(vmdutil.quaternion(watcher_axis, turn))
         return hrot
 
+    def get_rotation(self, frame_no, frame_type, bone_index,
+                     watcher_v, target_v, target_pos):
+
+        bone_graph = self.watcher_transform.transform_bone_graph
+        bone_defs = self.watcher_transform.bone_defs
+        bone_def = bone_defs[bone_index]
+        bone_name = bone_def.name_jp
+        if bone_graph.in_degree(bone_index) > 0:
+            parent_index = next(iter(bone_graph.preds[bone_index]))
+            parent_name = bone_defs[parent_index].name_jp
+            global_parent, vmd_parent, add_parent = (
+                self.watcher_transform.do_transform(
+                    frame_no, parent_index))
+            add_trans = self.watcher_transform.get_additional_transform(
+                frame_no, bone_index)
+            _, neck_pos = vmdmotion.get_global_transform(
+                (vmdutil.QUATERNION_IDENTITY, [0, 0, 0]), bone_def,
+                vmd_parent, bone_defs[parent_index],
+                global_parent, add_trans)
+        else:
+            # neck_pos = bone_def.position
+            raise Exception('overwrite bone should not be root.')
+        base_dir = self.base_dirs[bone_index]
+        base_dir = vmdutil.rotate_v3q(base_dir, global_parent[0])
+
+        if (
+            bone_def.flag & pmxdef.BONE_AXIS_IS_FIXED ==
+                pmxdef.BONE_AXIS_IS_FIXED):
+            axis = bone_def.fixed_axis
+            up = vmdutil.rotate_v3q(axis, global_parent[0])
+            hrot = self.get_arm_rotation(
+                frame_type, frame_no, bone_name,
+                parent_name,
+                watcher_v, base_dir, neck_pos, axis, up,
+                target_v, target_pos)
+        else:
+            up = vmdutil.rotate_v3q((0, 1, 0), global_parent[0])
+            hrot = self.get_face_rotation(
+                frame_type, frame_no, bone_name,
+                parent_name,
+                watcher_v, base_dir, neck_pos, up,
+                target_v, target_pos)
+        return hrot
+
     def make_look_at_frames(
             self, frame_type, frame_no, target_pos,
             next_frame_no, next_center_transform, next_target_pos):
+
         overwrite_frames = list()
         bone_defs = self.watcher_transform.bone_defs
 
@@ -431,55 +467,72 @@ class LookAt():
             cpos = (0, 0, 0)
             watcher_v = (0, 0, 0)
 
-        bone_graph = self.watcher_transform.transform_bone_graph
         for bone_index in self.overwrite_indexes:
             bone_def = bone_defs[bone_index]
             bone_name = bone_def.name_jp
-            if bone_graph.in_degree(bone_index) > 0:
-                parent_index = next(iter(bone_graph.preds[bone_index]))
-                parent_name = bone_defs[parent_index].name_jp
-                global_parent, vmd_parent, add_parent = (
-                    self.watcher_transform.do_transform(
-                        frame_no, parent_index))
-                add_trans = self.watcher_transform.get_additional_transform(
-                    frame_no, bone_index)
-                _, neck_pos = vmdmotion.get_global_transform(
-                    (vmdutil.QUATERNION_IDENTITY, [0, 0, 0]), bone_def,
-                    vmd_parent, bone_defs[parent_index],
-                    global_parent, add_trans)
-            else:
-                # neck_pos = bone_def.position
-                raise Exception('overwrite bone should not be root.')
-            base_dir = self.base_dirs[bone_index]
-            base_dir = vmdutil.rotate_v3q(base_dir, global_parent[0])
-
-            if (
-                bone_def.flag & pmxdef.BONE_AXIS_IS_FIXED ==
-                    pmxdef.BONE_AXIS_IS_FIXED):
-                axis = bone_def.fixed_axis
-                up = vmdutil.rotate_v3q(axis, global_parent[0])
-                hrot = self.get_arm_rotation(
-                    frame_type, frame_no, bone_name,
-                    parent_name,
-                    watcher_v, base_dir, neck_pos, axis, up,
-                    target_v, target_pos)
-                if hrot is None:
-                    return []
-            else:
-                up = vmdutil.rotate_v3q((0, 1, 0), global_parent[0])
-                hrot = self.get_face_rotation(
-                    frame_type, frame_no, bone_name,
-                    parent_name,
-                    watcher_v, base_dir, neck_pos, up,
-                    target_v, target_pos)
-                if hrot is None:
-                    return []
+            hrot = self.get_rotation(
+                frame_no, frame_type, bone_index,
+                watcher_v, target_v, target_pos)
+            if hrot is None:
+                return []
             self.watcher_transform.do_transform(
                 frame_no, bone_index, (hrot, (0, 0, 0)))
             overwrite_frames.append(vmddef.BONE_SAMPLE._replace(
                 frame=frame_no,
                 name=bone_name.encode(vmddef.ENCODING),
                 rotation=hrot))
+
+        # vmd_blend
+        if self.need_vmd_blend():
+            overwrite_frames = self.blend_vmd(
+                frame_no, frame_type, overwrite_frames,
+                watcher_v, target_v, target_pos)
+        return overwrite_frames
+
+    def blend_vmd(self, frame_no, frame_type, overwrite_frames,
+                  watcher_v, target_v, target_pos):
+        def find_frame(bone_name):
+            for index, frame in enumerate(overwrite_frames):
+                if vmdutil.b_to_str(frame.name) == bone_name:
+                    return overwrite_frames.pop(index)
+
+        bone_defs = self.watcher_transform.bone_defs
+
+        # remove transformation data from db
+        self.watcher_transform.delete_descendants(
+            frame_no, self.overwrite_indexes[0])
+        # blend vmd
+        for bone_index in self.overwrite_indexes:
+            bone_name = bone_defs[bone_index].name_jp
+            if bone_index in self.watcher_transform.leaf_indexes:  # eyes
+                # lookat
+                hrot = self.get_rotation(
+                    frame_no, frame_type, bone_index,
+                    watcher_v, target_v, target_pos)
+                if hrot is not None:
+                    frame = find_frame(bone_name)
+                    frame = frame._replace(rotation=hrot)
+                    self.watcher_transform.do_transform(
+                        frame_no, bone_index, (hrot, (0, 0, 0)))
+                    overwrite_frames.append(frame)
+            else:
+                ratio = self.vmd_blend_ratios.get(bone_name, (0, 0, 0))
+                # blend
+                if ratio[0] > 0 or ratio[1] > 0 or ratio[2] > 0:
+                    frame = find_frame(bone_name)
+                    vmd_rot = self.watcher_transform.get_vmd_transform(
+                        frame_no, bone_index)[0]
+                    vmd_euler = vmdutil.quaternion_to_euler(vmd_rot)
+                    vmd_euler = [i * j for i, j in zip(vmd_euler, ratio)]
+                    look_euler = vmdutil.quaternion_to_euler(frame.rotation)
+                    # blend
+                    look_euler = [i + j for i, j in zip(look_euler, vmd_euler)]
+                    look_euler = self.apply_constraints(bone_name, look_euler)
+                    hrot = tuple(vmdutil.euler_to_quaternion(look_euler))
+                    frame = frame._replace(rotation=hrot)
+                    self.watcher_transform.do_transform(
+                        frame_no, bone_index, (hrot, (0, 0, 0)))
+                    overwrite_frames.append(frame)
         return overwrite_frames
 
     def camera_delay(

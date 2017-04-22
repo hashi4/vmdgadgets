@@ -76,6 +76,15 @@ class Bonegraph():
                 return True
         return False
 
+    def get_descendants(self, node, result=None):
+        if result is None:
+            result = set()
+        for out_edge in self.edges[node]:
+            if out_edge not in result:
+                result.add(out_edge)
+                result = self.get_descendants(out_edge, result)
+        return result
+
     def t_sort(self):
         roots = [node for node, degree in self.in_degree() if degree == 0]
         children = {
