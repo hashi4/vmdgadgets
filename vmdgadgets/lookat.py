@@ -500,7 +500,7 @@ class LookAt():
                 delay_to = math.ceil(maxrot / self.omega_limit) + frame_no
                 while True:
                     peek = queue.top()
-                    if delay_to <= peek.frame_no:
+                    if peek is None or delay_to <= peek.frame_no:
                         break
                     queue.pop()
                 queue.push(MotionFrame(delay_to, 'r', -1, 'DELAY'))
