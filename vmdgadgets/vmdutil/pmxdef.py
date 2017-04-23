@@ -28,6 +28,24 @@ PMX_ELEMENTS = (
 )
 
 
+def vertex_index_size(length):  # vertex(uint8, uint16, int32)
+    if length < 256:
+        return 1
+    elif length < 65536:
+        return 2
+    else:
+        return 4
+
+
+def index_size(length):  # texture, material, bone, morph, rigid_body
+    if length < 128:
+        return 1
+    elif length < 32768:
+        return 2
+    else:
+        return 4
+
+
 def b_to_str(b, encoding=PMX_ENCODING[0]):
     return b.decode(encoding)
 

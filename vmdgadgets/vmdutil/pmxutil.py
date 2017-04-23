@@ -107,10 +107,10 @@ class Bonegraph():
 
 class Pmxio():
     def __init__(self):
-        vindex = pmxdef.INDEX_FORMAT_VERTEX[1]
-        index = pmxdef.INDEX_FORMAT[1]
+        vindex = 1
+        index = 1
         self.header = pmxdef.header(
-            pmxdef.PMX_HEADER, 2.0, 8, pmxdef.PMX_ENCODING[0], 0,
+            pmxdef.PMX_HEADER, 2.0, 8, 0, 0,
             vindex, index, index, index, index, index)
         self.counts = {}
         self.elements = {}
@@ -166,8 +166,21 @@ class Pmxio():
         self.buf = reader.read()
         self.read_bytes()
 
+    def update_header(self):
+        def isize(o):
+            return pmxdef.index_size(self.counts[o].count)
+        visize = pmxdef.vertex_index_size(self.counts['vertexes'].count)
+        self.header = self.header._replace(
+            vertex_isize=visize,
+            texture_isize=isize('textures'),
+            material_isize=isize('materials'),
+            bone_isize=isize('bones'),
+            morph_isize=isize('morphs'),
+            rigid_body_isize=isize('rigid_bodies'))
+
     def to_bytes(self):
         buf = bytearray()
+        self.update_header()
         # header
         buf += pmxdef.pack_header(self.header)
         # model info
