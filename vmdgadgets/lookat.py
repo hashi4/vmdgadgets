@@ -518,8 +518,8 @@ class LookAt():
             else:
                 ratio = self.vmd_blend_ratios.get(bone_name, (0, 0, 0))
                 # blend
+                frame = find_frame(bone_name)
                 if ratio[0] > 0 or ratio[1] > 0 or ratio[2] > 0:
-                    frame = find_frame(bone_name)
                     vmd_rot = self.watcher_transform.get_vmd_transform(
                         frame_no, bone_index)[0]
                     vmd_euler = vmdutil.quaternion_to_euler(vmd_rot)
@@ -532,7 +532,10 @@ class LookAt():
                     frame = frame._replace(rotation=hrot)
                     self.watcher_transform.do_transform(
                         frame_no, bone_index, (hrot, (0, 0, 0)))
-                    overwrite_frames.append(frame)
+                else:
+                    self.watcher_transform.do_transform(
+                        frame_no, bone_index, (frame.rotation, (0, 0, 0)))
+                overwrite_frames.append(frame)
         return overwrite_frames
 
     def camera_delay(
