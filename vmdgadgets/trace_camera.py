@@ -4,27 +4,10 @@ import vmdutil
 import lookat
 
 
-def _make_argumentparser():
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        'from_pmx',
-        help='pmx filename of model')
-    parser.add_argument(
-        'from_vmd',
-        help='vmd filename of model'),
-    parser.add_argument(
-        'cam_vmd',
-        help='vmd filename of camera')
-    parser.add_argument(
-        'outfile',
-        help='vmd filename to output')
+def make_common_arguments(parser):
     parser.add_argument(
         '--eyes_only', action='store_true', default=False,
         help='makes eyes motions only.')
-    parser.add_argument(
-        '--omega',
-        help='''limit of angular velocity after camera's cut.
-        Setting to 0 makes no limit. Default = 4.5 degrees/frame.''')
     parser.add_argument(
         '--ignore',
         help='''model ignores camera when relative angle is over this.
@@ -62,12 +45,29 @@ def _make_argumentparser():
     return parser
 
 
-def trace_camera(args):
-    l = lookat.LookAt(args.from_pmx, args.from_vmd)
-    l.set_target_vmd(args.cam_vmd)
-    if args.omega:
-        omega = math.radians(float(args.omega))
-        l.set_omega_limit(omega)
+def _make_argumentparser():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        'from_pmx',
+        help='pmx filename of model')
+    parser.add_argument(
+        'from_vmd',
+        help='vmd filename of model'),
+    parser.add_argument(
+        'cam_vmd',
+        help='vmd filename of camera')
+    parser.add_argument(
+        'outfile',
+        help='vmd filename to output')
+    parser.add_argument(
+        '--omega',
+        help='''limit of angular velocity after camera's cut.
+        Setting to 0 makes no limit. Default = 4.5 degrees/frame.''')
+    parser = make_common_arguments(parser)
+    return parser
+
+
+def set_common_options(args, l):
     if args.ignore:
         ignore = math.radians(float(args.ignore))
         l.set_ignore_zone(ignore)
@@ -109,6 +109,16 @@ def trace_camera(args):
             l.set_up_blend_weight(bone_name, val)
     if args.near:
         l.set_near_mode(True)
+    return l
+
+
+def trace_camera(args):
+    l = lookat.LookAt(args.from_pmx, args.from_vmd)
+    l.set_target_vmd(args.cam_vmd)
+    if args.omega:
+        omega = math.radians(float(args.omega))
+        l.set_omega_limit(omega)
+    set_common_options(args, l)
     heading_frames = l.look_at()
     vmdout = vmdutil.Vmdio()
     vmdout.set_frames('bones', heading_frames)
