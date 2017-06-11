@@ -19,6 +19,9 @@ def _make_argumentparser():
         'outfile',
         help='vmd filename to output')
     parser.add_argument(
+        '--eyes_only', action='store_true', default=False,
+        help='makes eyes motions only.')
+    parser.add_argument(
         '--omega',
         help='''limit of angular velocity after camera's cut.
         Setting to 0 makes no limit. Default = 4.5 degrees/frame.''')
@@ -42,6 +45,20 @@ def _make_argumentparser():
         '--vmd_blend', nargs=4, action='append',
         metavar=('bone_name', 'blend_ratio_x', 'y', 'z'),
         help='''blend vmd motion to tracking motion.''')
+    parser.add_argument(
+        '--forward_dir', nargs=4, action='append',
+        metavar=('bone_name', 'x', 'y', 'z'),
+        help='''set forward direction, default=(0, 0, -1)''')
+    parser.add_argument(
+        '--pitch_trim', nargs=2, action='append',
+        help='''set up(+)/down(-) trim angle in degrees''')
+    parser.add_argument(
+        '--up_blend_weight', nargs=2, action='append',
+        help='''multiply this weight when x axis of vmd_blend < 0.''')
+    parser.add_argument(
+        '--near', action='store_true', default=False,
+        help='''adjust look-at point of neck and head according to the
+                 distance to the eyes''')
     return parser
 
 
@@ -72,6 +89,26 @@ def trace_camera(args):
         for blend in args.vmd_blend:
             l.set_vmd_blend_ratio(
                 blend[0], (float(blend[1]), float(blend[2]), float(blend[3])))
+    if args.eyes_only:
+        l.set_overwrite_bones(['両目'])
+    if args.forward_dir:
+        for forward in args.forward_dir:
+            bone_name = forward[0]
+            direction = [float(n) for n in forward[1:]]
+            l.set_forward_dir(bone_name, direction)
+    if args.pitch_trim:
+        for trim in args.pitch_trim:
+            bone_name = trim[0]
+            h = math.tan(math.radians(float(trim[1])))
+            direction = (0, -h, -1)
+            l.set_forward_dir(bone_name, direction)
+    if args.up_blend_weight:
+        for weight in args.up_blend_weight:
+            bone_name = weight[0]
+            val = float(weight[1])
+            l.set_up_blend_weight(bone_name, val)
+    if args.near:
+        l.set_near_mode(True)
     heading_frames = l.look_at()
     vmdout = vmdutil.Vmdio()
     vmdout.set_frames('bones', heading_frames)

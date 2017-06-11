@@ -94,10 +94,21 @@ class LookAt():
             '頭': (0, 0, 0),
             '両目': (0, 0, 0),
         }
+        self.forward_dirs = {
+            '首': (0, 0, -1),
+            '頭': (0, 0, -1),
+            '両目': (0, 0, -1),
+        } 
+        self.up_blend_weight = {
+            '首': 1.0,
+            '頭': 1.0,
+            '両目': 1.0,
+        }
         self.ignore_zone = math.radians(140)
         self.global_up = (0, 1, 0)
         self.omega_limit = math.pi / 40
         self.additional_frame_nos = []
+        self.near_mode = False
         self.WATCHER = 0
         self.TARGET = 1
         self.bone_defs = {}
@@ -120,8 +131,10 @@ class LookAt():
         for bone_name in bone_names:
             if constraints and bone_name in constraints:
                 self.constraints[bone_name] = constraints[bone_name]
-            else:
+            elif bone_name not in self.constraints:
                 self.constraints[bone_name] = self.DEFAULT_CONTSTRAINT
+            else:
+                pass
 
     def set_target_bone(self, bone_name):
         self.target_bone = bone_name
@@ -141,6 +154,15 @@ class LookAt():
 
     def set_vmd_blend_ratio(self, bone_name, ratio):
         self.vmd_blend_ratios[bone_name] = ratio
+
+    def set_forward_dir(self, bone_name, dir):
+        self.forward_dirs[bone_name] = vmdutil.normalize_v(dir)
+
+    def set_up_blend_weight(self, bone_name, weight):
+        self.up_blend_weight[bone_name] = weight
+
+    def set_near_mode(self, b):
+        self.near_mode = b
 
     def set_additional_frames(self, frame_nos):
         self.additional_frame_nos = frame_nos
@@ -252,7 +274,12 @@ class LookAt():
         else:
             self.base_dirs = {}
             for index in self.overwrite_indexes:
-                self.base_dirs[index] = (0, 0, -1)
+                bone_name = bone_defs[index].name_jp
+                dir = self.forward_dirs.get(bone_name)
+                if dir is not None:
+                    self.base_dirs[index] = dir
+                else:
+                    self.base_dirs[index] = (0, 0, -1)
 
         # queue frames
         for bone_index in self.watcher_transform.transform_bone_indexes:
@@ -368,6 +395,20 @@ class LookAt():
             global_center = (vmdutil.QUATERNION_IDENTITY, (0, 0, 0))
         return global_center
 
+    def apply_near_mode(self, bone_index, rotation, target_pos):
+        bone_defs = self.watcher_transform.bone_defs
+        leaves = self.watcher_transform.transform_bone_graph.get_leaves(
+            bone_index)
+        for ow_index in self.overwrite_indexes:
+            if ow_index in leaves:
+                delta = vmdutil.sub_v(
+                    bone_defs[bone_index].position,
+                    bone_defs[ow_index].position)
+                delta = vmdutil.rotate_v3q(delta, rotation)
+                target_pos = vmdutil.add_v(target_pos, delta)
+                break  # first leaf in sorted overwrite-bones
+        return target_pos
+
     def get_face_rotation(
             self, frame_type, frame_no, bone_name, parent_name,
             watcher_v, watcher_dir, watcher_pos, up,
@@ -412,15 +453,19 @@ class LookAt():
                     frame_no, parent_index))
             add_trans = self.watcher_transform.get_additional_transform(
                 frame_no, bone_index)
-            _, neck_pos = vmdmotion.get_global_transform(
+            neck_rotation, neck_pos = vmdmotion.get_global_transform(
                 (vmdutil.QUATERNION_IDENTITY, [0, 0, 0]), bone_def,
                 vmd_parent, bone_defs[parent_index],
                 global_parent, add_trans)
         else:
             # neck_pos = bone_def.position
             raise Exception('overwrite bone should not be root.')
-        base_dir = self.base_dirs[bone_index]
-        base_dir = vmdutil.rotate_v3q(base_dir, global_parent[0])
+        forward_dir = self.base_dirs[bone_index]
+        base_dir = vmdutil.rotate_v3q(forward_dir, global_parent[0])
+
+        if self.near_mode:
+            target_pos = self.apply_near_mode(
+                bone_index, neck_rotation, target_pos)
 
         if (
             bone_def.flag & pmxdef.BONE_AXIS_IS_FIXED ==
@@ -433,7 +478,8 @@ class LookAt():
                 watcher_v, base_dir, neck_pos, axis, up,
                 target_v, target_pos)
         else:
-            up = vmdutil.rotate_v3q((0, 1, 0), global_parent[0])
+            up = (0, -forward_dir[2], forward_dir[1])
+            up = vmdutil.rotate_v3q(up, global_parent[0])
             hrot = self.get_face_rotation(
                 frame_type, frame_no, bone_name,
                 parent_name,
@@ -523,6 +569,11 @@ class LookAt():
                     vmd_rot = self.watcher_transform.get_vmd_transform(
                         frame_no, bone_index)[0]
                     vmd_euler = vmdutil.quaternion_to_euler(vmd_rot)
+                    if vmd_euler[0] > 0:  # up
+                        weight = self.up_blend_weight.get(bone_name, 1.0)
+                        vmd_euler = (
+                            vmd_euler[0] * weight,
+                            vmd_euler[1], vmd_euler[2])
                     vmd_euler = [i * j for i, j in zip(vmd_euler, ratio)]
                     look_euler = vmdutil.quaternion_to_euler(frame.rotation)
                     # blend

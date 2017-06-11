@@ -85,6 +85,10 @@ class Bonegraph():
                 result = self.get_descendants(out_edge, result)
         return result
 
+    def get_leaves(self, node):
+        descendants = self.get_descendants(node)
+        return [node for node in descendants if self.out_degree(node) <= 0]
+
     def t_sort(self):
         roots = [node for node, degree in self.in_degree() if degree == 0]
         children = {
