@@ -109,6 +109,7 @@ class LookAt():
         self.omega_limit = math.pi / 40
         self.additional_frame_nos = []
         self.near_mode = False
+        self.vmd_lerp = False
         self.WATCHER = 0
         self.TARGET = 1
         self.bone_defs = {}
@@ -163,6 +164,9 @@ class LookAt():
 
     def set_near_mode(self, b):
         self.near_mode = b
+
+    def set_vmd_lerp(self, b):
+        self.vmd_lerp = b
 
     def set_additional_frames(self, frame_nos):
         self.additional_frame_nos = frame_nos
@@ -365,9 +369,12 @@ class LookAt():
             body_dir_y, look_dir_y)
         return angle_around_y > self.ignore_zone
 
-    def scale_turn(self, bone_name, turn):
+    def scale_turn(self, bone_name, turn, r=False):
         constraint = self.constraints[bone_name]
-        turn = [k * j for k, j in zip(turn, constraint[1])]
+        weight = constraint[1]
+        if r:
+            weight = [1 - k for k in weight]
+        turn = [k * j for k, j in zip(turn, weight)]
         return turn
 
     def apply_constraints(self, bone_name, turn):
@@ -410,26 +417,40 @@ class LookAt():
         return target_pos
 
     def get_face_rotation(
-            self, frame_type, frame_no, bone_name, parent_name,
+            self, frame_type, frame_no, bone_index, parent_index,
             watcher_v, watcher_dir, watcher_pos, up,
             target_v, target_pos):
 
+        bone_defs = self.watcher_transform.bone_defs
+        bone_name = bone_defs[bone_index].name_jp
         look_dir = vmdutil.sub_v(target_pos, watcher_pos)
         if self.check_ignore_case(watcher_dir, look_dir):
             return None
 
         turn = vmdutil.look_at(
             watcher_dir, up, look_dir, self.global_up)
-        turn = self.scale_turn(bone_name, turn)
+        if (self.vmd_lerp and
+                bone_index not in self.watcher_transform.leaf_indexes):
+            vmd_rot = self.watcher_transform.get_vmd_transform(
+                frame_no, bone_index)[0]
+            vmd_euler = vmdutil.quaternion_to_euler(vmd_rot)
+            turn = [turn[0], turn[1], 0]
+            turn = self.scale_turn(bone_name, turn)
+            vmd_euler = self.scale_turn(bone_name, vmd_euler, True)
+            turn = vmdutil.add_v(turn, vmd_euler)
+        else:
+            turn = self.scale_turn(bone_name, turn)
         turn = self.apply_constraints(bone_name, turn)
         hrot = tuple(vmdutil.euler_to_quaternion(turn))
         return hrot
 
     def get_arm_rotation(
-            self, frame_type, frame_no, bone_name, parent_name,
+            self, frame_type, frame_no, bone_index, parent_index,
             watcher_v, watcher_dir, watcher_pos, watcher_axis, watcher_up,
             target_v, target_pos):
 
+        bone_defs = self.watcher_transform.bone_defs
+        bone_name = bone_defs[bone_index].name_jp
         look_dir = vmdutil.sub_v(target_pos, watcher_pos)
         turn = vmdutil.look_at_fixed_axis(
             watcher_dir, watcher_up, look_dir)
@@ -444,10 +465,8 @@ class LookAt():
         bone_graph = self.watcher_transform.transform_bone_graph
         bone_defs = self.watcher_transform.bone_defs
         bone_def = bone_defs[bone_index]
-        bone_name = bone_def.name_jp
         if bone_graph.in_degree(bone_index) > 0:
             parent_index = next(iter(bone_graph.preds[bone_index]))
-            parent_name = bone_defs[parent_index].name_jp
             global_parent, vmd_parent, add_parent = (
                 self.watcher_transform.do_transform(
                     frame_no, parent_index))
@@ -473,16 +492,16 @@ class LookAt():
             axis = bone_def.fixed_axis
             up = vmdutil.rotate_v3q(axis, global_parent[0])
             hrot = self.get_arm_rotation(
-                frame_type, frame_no, bone_name,
-                parent_name,
+                frame_type, frame_no, bone_index,
+                parent_index,
                 watcher_v, base_dir, neck_pos, axis, up,
                 target_v, target_pos)
         else:
             up = (0, -forward_dir[2], forward_dir[1])
             up = vmdutil.rotate_v3q(up, global_parent[0])
             hrot = self.get_face_rotation(
-                frame_type, frame_no, bone_name,
-                parent_name,
+                frame_type, frame_no, bone_index,
+                parent_index,
                 watcher_v, base_dir, neck_pos, up,
                 target_v, target_pos)
         return hrot

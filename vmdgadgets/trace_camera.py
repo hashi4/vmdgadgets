@@ -42,6 +42,9 @@ def make_common_arguments(parser):
         '--near', action='store_true', default=False,
         help='''adjust look-at point of neck and head according to the
                  distance to the eyes''')
+    parser.add_argument(
+        '--vmd_lerp', action='store_true', default=False,
+        help='''lerp lookat_dir and vmd_dir''')
     return parser
 
 
@@ -109,6 +112,8 @@ def set_common_options(args, l):
             l.set_up_blend_weight(bone_name, val)
     if args.near:
         l.set_near_mode(True)
+    if args.vmd_lerp:
+        l.set_vmd_lerp(True)
     return l
 
 

@@ -1,9 +1,9 @@
 import argparse
-import math
 import vmdutil
 import lookat
 
 import trace_camera
+
 
 def _make_argumentparser():
     parser = argparse.ArgumentParser()

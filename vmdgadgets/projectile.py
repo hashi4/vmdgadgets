@@ -96,29 +96,29 @@ class Projectile(LookAt):
             queue.push(MotionFrame(frame, 'f', -1, 'A'))
 
     def get_arm_rotation(
-            self, frame_type, frame_no, bone_name, parent_name,
+            self, frame_type, frame_no, bone_index, parent_index,
             watcher_v, watcher_dir, watcher_pos, axis, up,
             target_v, target_pos):
         # TODO
         if 'f' in frame_type:
             return self.get_projectile_arm_rotation(
-                frame_type, frame_no, bone_name, parent_name,
+                frame_type, frame_no, bone_index, parent_index,
                 watcher_v, watcher_dir, watcher_pos, axis, up,
                 target_v, target_pos)
         else:
             if self.tracking_mode == 'L':
                 return LookAt.get_arm_rotation(
-                    self, frame_type, frame_no, bone_name, parent_name,
+                    self, frame_type, frame_no, bone_index, parent_index,
                     watcher_v, watcher_dir, watcher_pos, axis, up,
                     target_v, target_pos)
             elif self.tracking_mode == 'P':
                 return self.get_projectile_arm_rotation(
-                    frame_type, frame_no, bone_name, parent_name,
+                    frame_type, frame_no, bone_index, parent_index,
                     watcher_v, watcher_dir, watcher_pos, axis, up,
                     target_v, target_pos)
 
     def get_projectile_arm_rotation(
-            self, frame_type, frame_no, bone_name, parent_name,
+            self, frame_type, frame_no, bone_index, parent_index,
             watcher_v, watcher_dir, watcher_pos, axis, up,
             target_v, target_pos):
         look_dir = vmdutil.sub_v(target_pos, watcher_pos)
@@ -134,7 +134,6 @@ class Projectile(LookAt):
         angle = vmdutil.look_at_fixed_axis(
             watcher_dir, up, vmdutil.normalize_v(v))
         hrot = tuple(vmdutil.quaternion(axis, angle))
-        bone_index = self.watcher_transform.bone_name_to_index[bone_name]
         if (bone_index in self.watcher_transform.leaf_indexes and
            'f' in frame_type):
             self.export_bullet_motion(

@@ -1,5 +1,5 @@
 import sys
-sys.path.append('../../../vmdgadgets')
+sys.path.append('../../vmdgadgets')
 import vmdutil
 from projectile import Projectile
 from lookat import LookAt
