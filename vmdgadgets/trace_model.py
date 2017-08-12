@@ -12,7 +12,7 @@ def _make_argumentparser():
         help='pmx filename of model')
     parser.add_argument(
         'from_vmd',
-        help='vmd filename of model'),
+        help='vmd filename of model')
     parser.add_argument(
         'to_pmx',
         help='pmx filename of target')
