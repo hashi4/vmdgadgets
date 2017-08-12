@@ -187,6 +187,15 @@ def b_to_str(b):
         return b[:-1].decode(vmddef.ENCODING)
 
 
+def str_to_b(s, maxlen=15):
+    b = s.encode(vmddef.ENCODING)
+    length = len(b)
+    if len(b) > maxlen:
+        return b[:maxlen]
+    else:
+        return b + b'\0' * (maxlen - length)
+
+
 def is_vmd_header(header):
     return b_to_str(header.header) == b_to_str(vmddef.HEADER1)
 
