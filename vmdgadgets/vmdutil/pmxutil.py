@@ -8,6 +8,13 @@ class Bonegraph():
         self.edges = {}
         self.preds = {}
 
+    def add_node(self, a):
+        if a not in self.edges:
+            self.edges[a] = {}
+        if a not in self.preds:
+            self.preds[a] = {}
+        return
+
     def add_edge(self, a, b, **attr):
         if a not in self.edges:
             self.edges[a] = {}
@@ -211,7 +218,7 @@ class Pmxio():
         writer.write(buf)
 
 
-def make_name_dict(elements):
+def make_index_dict(elements):
     result = dict()
     for index, element in enumerate(elements):
         result[element.name_jp] = index
@@ -247,6 +254,7 @@ def make_sub_bone_link_graph(
         bone_defs, from_index, to_indexes, criteria=None, bone_graph=None):
     if bone_graph is None:
         bone_graph = Bonegraph()
+        bone_graph.add_node(from_index)
     parents = set()
     nodes = [node for node in bone_graph.edges]
     for to_index in to_indexes:

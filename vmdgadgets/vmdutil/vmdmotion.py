@@ -66,7 +66,7 @@ class BoneTransformation():
             mandatory_bone_names[:]
             if mandatory_bone_names is not None else [])
 
-        self.bone_name_to_index = pmxutil.make_name_dict(self.bone_defs)
+        self.bone_name_to_index = pmxutil.make_index_dict(self.bone_defs)
         self.mandatory_bone_indexes = [
             self.bone_name_to_index[name]
             for name in self.mandatory_bone_names]
@@ -99,6 +99,15 @@ class BoneTransformation():
 
         # {frame_no: {bone_index: (global, local, additional)}}
         self.transform_dict = dict()
+        self.ext_transform = None
+
+    def set_external_link(self, ext_transform, bone_name):
+        if ext_transform is None:
+            return
+        self.ext_transform = ext_transform
+        self.ext_bone_name = bone_name
+        self.ext_bone_index = ext_transform.bone_name_to_index[bone_name]
+        ((rot, pos), _, _) = ext_transform.do_transform(0, self.ext_bone_index)
 
     def make_bone_graph(self, subgraph):
         if len(self.mandatory_bone_names) > 0 and subgraph is True:
@@ -109,7 +118,7 @@ class BoneTransformation():
             bone_graph = pmxutil.make_all_bone_link_graph(self.bone_defs)
         bone_indexes = [index for index in bone_graph.edges]
 
-        # remove nodes not in vmd or mandatory
+        # remove nodes not in vmd nor mandatory
         for node_index in bone_indexes:
             bone_def = self.bone_defs[node_index]
             name = bone_def.name_jp
@@ -144,6 +153,8 @@ class BoneTransformation():
                     global_transform, local_transform, additional_transform)}
 
     def delete(self, frame_no, bone_index=None):
+        if self.ext_transform is not None:
+            self.ext_transform.delete(frame_no, self.ext_bone_index)
         if frame_no in self.transform_dict:
             if bone_index is None:
                 return self.transform_dict.pop(frame_no)
@@ -270,11 +281,19 @@ class BoneTransformation():
                 vmd_transform = self.get_vmd_transform(frame_no, bone_index)
         if (bone_index <= 0 or
                 self.transform_bone_graph.in_degree(bone_index) <= 0):
-            global_transform = (
-                vmd_transform[0],
-                vmdutil.add_v(
-                    self.bone_defs[bone_index].position, vmd_transform[1]))
             additional_transform = None
+            if self.ext_transform is None:
+                global_transform = (
+                    vmd_transform[0],
+                    vmdutil.add_v(
+                        self.bone_defs[bone_index].position, vmd_transform[1]))
+            else:
+                ext_g, ext_v, ext_a = self.ext_transform.do_transform(
+                    frame_no, self.ext_bone_index)
+                global_transform = get_global_transform(
+                    vmd_transform, self.bone_defs[bone_index],
+                    ext_v, self.bone_defs[bone_index], #  ext pos = this pos
+                    ext_g)
         else:
             parent_index = next(
                 iter(self.transform_bone_graph.preds[bone_index]))

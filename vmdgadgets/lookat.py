@@ -68,6 +68,13 @@ def replace_bonedef_position(bone1, bone2, axis):
 
 
 MotionFrame = namedtuple('MotionFrame', 'frame_no type model_id bone_name')
+# type:
+# 'o': key frames of overwrite bones
+# 'b': bones(watcher, target, ext)
+# 'c': camera frames of 'cut'
+# 'v': camera frames
+# 'r': delay
+# 'u': addtional
 
 
 class LookAt():
@@ -104,6 +111,7 @@ class LookAt():
             '頭': 1.0,
             '両目': 1.0,
         }
+        self.watcher_extlink = None
         self.ignore_zone = math.radians(140)
         self.global_up = (0, 1, 0)
         self.omega_limit = math.pi / 40
@@ -112,6 +120,7 @@ class LookAt():
         self.vmd_lerp = False
         self.WATCHER = 0
         self.TARGET = 1
+        self.WATCHER_EX = 2
         self.bone_defs = {}
         self.bone_dict = {}
 
@@ -171,6 +180,9 @@ class LookAt():
     def set_additional_frames(self, frame_nos):
         self.additional_frame_nos = frame_nos
 
+    def set_watcher_external_link(self, bone_name, pmx_name, vmd_name):
+        self.watcher_extlink = (bone_name, pmx_name, vmd_name)
+
     def add_frames(self, queue):
         for frame_no in self.additional_frame_nos:
             queue.push(MotionFrame(frame_no, 'u', -1, 'A'))
@@ -206,6 +218,14 @@ class LookAt():
                     self.target_motions = self.target_vmd.get_frames('bones')
                     self.bone_defs[self.TARGET] = self.target_pmx.get_elements(
                         'bones')
+
+        if self.watcher_extlink is not None:
+            self.watcher_extlink_pmx = pmxutil.Pmxio()
+            self.watcher_extlink_pmx.load(self.watcher_extlink[1])
+            self.watcher_extlink_vmd = vmdutil.Vmdio()
+            self.watcher_extlink_vmd.load(self.watcher_extlink[2])
+            self.bone_defs[self.WATCHER_EX] = (
+                self.watcher_extlink_pmx.get_elements('bones'))
 
     def check_bones(self, bone_names, bone_dict):
         for name in bone_names:
@@ -243,9 +263,26 @@ class LookAt():
                     parent_index = next(iter(graph.preds[parent_index]))
         return base_dirs
 
+    def setup_watcher_extlink(self, queue):
+        bone_defs = self.bone_defs[self.WATCHER_EX]
+        ext_bone = self.watcher_extlink[0]
+        self.bone_dict[self.WATCHER_EX] = bone_dict = pmxutil.make_index_dict(
+            bone_defs)
+        if not self.check_bones([ext_bone], bone_dict):
+            raise Exception('external link bone is not in pmx')
+        self.watcher_extlink_transform = extt = vmdmotion.BoneTransformation(
+            bone_defs, self.watcher_extlink_vmd.get_frames('bones'),
+            [ext_bone], True)
+        for bone_index in extt.transform_bone_indexes:
+            bone_name = bone_defs[bone_index].name_jp
+            for motion in extt.motion_name_dict[bone_name]:
+                queue.push(MotionFrame(
+                    motion.frame, 'b', self.WATCHER_EX, bone_name))
+        return self.watcher_extlink_transform
+
     def setup_watcher(self, queue):
         bone_defs = self.bone_defs[self.WATCHER]
-        self.bone_dict[self.WATCHER] = bone_dict = pmxutil.make_name_dict(
+        self.bone_dict[self.WATCHER] = bone_dict = pmxutil.make_index_dict(
             bone_defs)
         if '両目' in self.overwrite_bones:
             bone_defs[bone_dict['両目']] = replace_bonedef_position(
@@ -297,6 +334,12 @@ class LookAt():
                 else:
                     queue.push(MotionFrame(
                         motion.frame, 'o', self.WATCHER, bone_name))
+
+        if self.watcher_extlink is not None:
+            transform = self.setup_watcher_extlink(queue)
+            self.watcher_transform.set_external_link(
+                transform, self.watcher_extlink[0])
+
         return
 
     def setup_target(self, queue):
@@ -313,7 +356,7 @@ class LookAt():
             return
         elif 'MODEL' == self.target_mode:
             bone_defs = self.bone_defs[self.TARGET]
-            self.bone_dict[self.TARGET] = d = pmxutil.make_name_dict(bone_defs)
+            self.bone_dict[self.TARGET] = d = pmxutil.make_index_dict(bone_defs)
             if self.target_bone not in d:
                 raise Exception('target bone is not in pmx.')
             if self.target_bone == '両目':

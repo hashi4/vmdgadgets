@@ -45,6 +45,9 @@ def make_common_arguments(parser):
     parser.add_argument(
         '--vmd_lerp', action='store_true', default=False,
         help='''lerp lookat_dir and vmd_dir''')
+    parser.add_argument(
+        '--extlink1', nargs=3,
+        help='''external bone, pmx vmd''')
     return parser
 
 
@@ -114,6 +117,9 @@ def set_common_options(args, l):
         l.set_near_mode(True)
     if args.vmd_lerp:
         l.set_vmd_lerp(True)
+    if args.extlink1:
+        l.set_watcher_external_link(
+            args.extlink1[0], args.extlink1[1], args.extlink1[2])
     return l
 
 

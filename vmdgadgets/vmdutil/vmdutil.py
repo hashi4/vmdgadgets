@@ -159,6 +159,17 @@ def make_name_dict(frame_dict, decode=False):
     return name_dict
 
 
+def make_index_dict(frames, decode=False):
+    result = dict()
+    for index, frame in enumerate(frames):
+        name = frame.name if not decode else b_to_str(frame.name)
+        d = result.get(name)
+        if d is None:
+            result[name] = dict()
+        result[name][frame.frame] = index  # overwrite (not list)
+    return result
+
+
 def normalize_frames(frame_dict):
     if (len(frame_dict)) > 0:
         sample_frame = frame_dict.values().__iter__().__next__()
@@ -218,16 +229,18 @@ def adjacent_difference(l, op=lambda x1, x2: x1 - x2):
     return [op(l[index+1], l[index]) for index in range(len(l) - 1)]
 
 
-def get_interval(frame_no, frame_dict):
-    keys = sorted(frame_dict.keys())
-    if frame_no < keys[0]:
-        return None, 0
-    if frame_no > keys[-1]:
-        return keys[-1], None
-    if frame_no in keys:
-        return (frame_no, frame_no)
-    index = bisect.bisect_right(keys, frame_no)
-    return keys[index - 1], keys[index]
+def get_interval(frame_no, sorted_frames, keys=None):
+    if keys is None:
+        keys = [frame.frame for frame in sorted_frames]
+    if frame_no <= sorted_frames[0].frame:
+        return 0, True
+    if frame_no >= sorted_frames[-1].frame:
+        return len(sorted_frames) - 1, True
+    index = bisect.bisect_left(keys, frame_no)
+    if index <= len(keys) - 1 and keys[index] == frame_no:
+        return index, True
+    else:
+        return index - 1, False
 
 
 def interpolate_position(frame_no, begin, end, element='bones'):
@@ -250,16 +263,6 @@ def interpolate_position(frame_no, begin, end, element='bones'):
         by = vmdbezier.bezier3f(ycp, t)
         result.append(begin_pos + pos_delta * by)
     return result
-
-
-def get_frame_position(frame_no, frame_dict, element='bones'):
-    begin, end = get_interval(frame_no, frame_dict)
-    if begin is None or end is None:
-        return None
-    if begin == end:
-        return frame_dict[begin].position
-    return interpolate_position(
-        frame_no, frame_dict[begin], frame_dict[end], element)
 
 
 def get_all_position_in_interval(frame_dict, begin, end, element='bones'):

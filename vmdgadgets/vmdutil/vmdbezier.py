@@ -59,6 +59,22 @@ def mirror_cp(cp):
         return (cp[3][0] - p[0], cp[3][1] - p[1])
     return [cp[0], m(cp[2]), m(cp[1]), cp[3]]
 
+
+def bezier_n(control_points, t):
+    from vmdutil import lerp_v
+    cp = control_points
+    length = len(control_points)
+    if length < 2:
+        return None
+    elif length == 2:
+        return lerp_v(cp[0], cp[1], t)
+    else:
+        return lerp_v(
+            bezier_n(cp[:-1],t), bezier_n(cp[1:], t), t)
+
+
+
+
 _ONE_THIRD = 1 / 3
 _TWO_THIRDS = 2 / 3
 PARABOLA1 = [(0, 0), (_ONE_THIRD, 0), (_TWO_THIRDS, _ONE_THIRD), (1, 1)]
