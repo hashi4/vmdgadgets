@@ -38,6 +38,9 @@ def _make_argumentparser():
         '--rgb', nargs=3, type=float, default=RGB,
         metavar=('R', 'G', 'B'), help='light color. default=0.602')
     parser.add_argument(
+        '--y_only', action='store_true', default=False,
+        help='Use only Y axis angle of camera direction. X axis is rx.')
+    parser.add_argument(
         '--add_frames', nargs='*', default=None,
         metavar='frame_no',
         help='''Add light frames.''')
@@ -48,13 +51,17 @@ _parser = _make_argumentparser()
 __doc__ += _parser.format_help()
 
 
-def camera_to_light(camera_frame, against=None, rx=0.0, ry=0.0, rgb=RGB):
+def camera_to_light(camera_frame, against=None, rx=0.0, ry=0.0,
+        rgb=RGB, y_only=False):
     rx = math.radians(rx)
     ry = math.radians(ry)
     yaw_inverse = -1.0 if against and 'y' in against else 1.0
     pitch_inverse = -1.0 if against and 'x' in against else 1.0
     rotation = list(camera_frame.rotation)
-    rotation[0] += rx
+    if not y_only:
+        rotation[0] += rx
+    else:
+        rotation[0] = rx
     rotation[1] += ry
     camera_direction = list(vmdutil.camera_direction(rotation))
     camera_direction[0] *= yaw_inverse
@@ -64,11 +71,12 @@ def camera_to_light(camera_frame, against=None, rx=0.0, ry=0.0, rgb=RGB):
         camera_frame.frame, tuple(rgb), tuple(camera_direction))
 
 
-def camlight(vmdin, against=None, rx=0.0, ry=0.0, rgb=RGB, add_frames=None):
+def camlight(vmdin, against=None, rx=0.0, ry=0.0, rgb=RGB,
+             y_only=False, add_frames=None):
     light_frames = []
     for camera_frame in vmdin.get_frames('cameras'):
         light_frames.append(
-            camera_to_light(camera_frame, against, rx, ry, rgb))
+            camera_to_light(camera_frame, against, rx, ry, rgb, y_only))
     if add_frames is not None:
         camera_frames = vmdin.get_frames('cameras')
         camera_motion = vmdmotion.CameraTransformation(camera_frames)
@@ -80,7 +88,7 @@ def camlight(vmdin, against=None, rx=0.0, ry=0.0, rgb=RGB, add_frames=None):
                 camera_frame = vmddef.camera(
                     frame_no, distance, position, rotation, None, None, None)
                 light_frames.append(
-                    camera_to_light(camera_frame, against, rx, ry, rgb))
+                    camera_to_light(camera_frame, against, rx, ry, rgb, y_only))
     out = vmdutil.Vmdio()
     out.header = vmddef.header(
         vmddef.HEADER1, vmddef.HEADER2_CAMERA)
@@ -89,18 +97,18 @@ def camlight(vmdin, against=None, rx=0.0, ry=0.0, rgb=RGB, add_frames=None):
 
 
 def camlight_fd(infile, outfile, against=None, rx=0.0, ry=0.0,
-                rgb=RGB, add_frames=None):
+                rgb=RGB, y_only=False, add_frames=None):
     vmdin = vmdutil.Vmdio()
     vmdin.load_fd(infile)
-    vmdout = camlight(vmdin, against, rx, ry, rgb, add_frames)
+    vmdout = camlight(vmdin, against, rx, ry, rgb, y_only, add_frames)
     vmdout.store_fd(outfile)
 
 
 def camlight_fname(infile, outfile, against=None, rx=0.0, ry=0.0,
-                   rgb=RGB, add_frames=None):
+                   rgb=RGB, y_only=False, add_frames=None):
     vmdin = vmdutil.Vmdio()
     vmdin.load(infile)
-    vmdout = camlight(vmdin, against, rx, ry, rgb, add_frames)
+    vmdout = camlight(vmdin, against, rx, ry, rgb, y_only, add_frames)
     vmdout.store(outfile)
 
 
