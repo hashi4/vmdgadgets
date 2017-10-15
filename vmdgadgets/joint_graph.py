@@ -59,7 +59,7 @@ def print_graph(nodes, edges, s):
         if attr['t'] == 'joint':
             return '{}: {}'.format(node[1:], attr['name'])
         else:  # 'rigid body'
-            return '{}: {}\n[{}]'.format(
+            return '{}: {}\\n[{}]'.format(
                 node[1:], attr['name'], attr['bone'])
 
     for node in nodes:
