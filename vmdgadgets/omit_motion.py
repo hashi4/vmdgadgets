@@ -5,6 +5,7 @@ import argparse
 import vmdutil
 from vmdutil import vmddef
 
+
 def _make_argumentparser():
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -26,6 +27,7 @@ def _make_argumentparser():
         help=('dispose all motion except for specified'))
     return parser
 
+
 def remove_frames_by_name(frames, names, inverse=False):
     if names is None or len(names) == 0:
         if inverse:
@@ -33,11 +35,10 @@ def remove_frames_by_name(frames, names, inverse=False):
         else:
             return frames
     new_frames = list()
-    names = set([vmdutil.str_to_b(name) for name in names])
     for frame in frames:
-        if not inverse and frame.name not in names:
+        if not inverse and vmdutil.b_to_str(frame.name) not in names:
             new_frames.append(frame)
-        elif inverse and frame.name in names:
+        elif inverse and vmdutil.b_to_str(frame.name) in names:
             new_frames.append(frame)
     return new_frames
 
@@ -53,6 +54,7 @@ def remove_motion(args):
             e, remove_frames_by_name(vmd.get_frames(e), n, args.inverse))
     vmd.store_fd(args.outfile)
     return
+
 
 _parser = _make_argumentparser()
 if __name__ == '__main__':
