@@ -26,13 +26,14 @@ def make_argumentparser():
         help='rotation of 全ての親 in euler angles')
     return parser
 
+
 def move_root(args):
     if args.pos:
         position = tuple(args.pos)
     else:
         position = (0, 0, 0)
     if args.angles:
-        angles = tuple(args.angles)
+        angles = (args.angles[0], -args.angles[1], -args.angles[2])
     else:
         angles = (0, 0, 0)
     if angles == (0, 0, 0) and position == (0, 0, 0):
@@ -64,6 +65,7 @@ def move_root(args):
             new_frames.extend(name_dict[key])
     vmdin.set_frames('bones', new_frames)
     vmdin.store_fd(args.outfile)
+
 
 if __name__ == '__main__':
     parser = make_argumentparser()
