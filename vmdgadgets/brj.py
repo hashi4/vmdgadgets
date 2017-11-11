@@ -1,6 +1,7 @@
 import sys
 import math
 import argparse
+from collections import defaultdict
 
 import vmdutil
 from vmdutil import pmxutil
@@ -380,25 +381,39 @@ def offset_morphs(morphs, m_offset):
 def fill_bones(pmx):
     bones = pmx.get_elements('bones')
     joints = pmx.get_elements('joints')
-    b_dict = {joint.rigid_body_b: index for index, joint in enumerate(joints)}
     bone_names = {bone.name_jp: index for index, bone in enumerate(bones)}
     rigid_bodies = pmx.get_elements('rigid_bodies')
     bone_index = len(bones)
+    b_dict = defaultdict(list)
+    for index, joint in enumerate(joints):
+        b_dict[joint.rigid_body_b].append(index)
 
-    def set_bone(body_index):
+    def set_bone(body_index, path=None):
         nonlocal bone_index
+        if path is None:
+            path = {body_index}
+        elif body_index in path:
+            return None  # loop
+        else:
+            path.add(body_index)
         body = rigid_bodies[body_index]
         if body.name_jp not in bone_names:
-            joint_index = b_dict.get(body_index, -1)
-            if -1 == joint_index:
+            joint_indexes = b_dict.get(body_index, [])
+            if 0 == len(joint_indexes):
                 parent = bone_names['センター']
             else:
-                joint = joints[joint_index]
-                a_body = rigid_bodies[joint.rigid_body_a]
-                if a_body.bone == -1:
-                    parent = set_bone(joint.rigid_body_a)
-                else:
-                    parent = a_body.bone
+                parents = list()
+                for joint_index in joint_indexes:
+                    joint = joints[joint_index]
+                    a_body = rigid_bodies[joint.rigid_body_a]
+                    if a_body.bone == -1:
+                        parent = set_bone(joint.rigid_body_a, path)
+                        if parent is not None:
+                            parents.append(parent)
+                    else:
+                        parents.append(a_body.bone)
+                parent = min(parents) if len(parents) > 0 else bone_names[
+                    'センター']
             bones.append(pmxdef.bone(
                 name_jp=body.name_jp, name_en=body.name_en,
                 position=body.position, parent=parent, transform_hierarchy=0,
