@@ -438,17 +438,23 @@ def fill_bones(pmx):
 
 def make_brj_pmx(pmx):
     # material_order = ['bones', 'original', 'joints', 'rigid_bodies']
+    # material_order = ['bones', 'rigid_bodies']
     material_order = ['bones', 'original', 'rigid_bodies']
 
     pmx = fill_bones(pmx)
-    new_vertexes = pmx.get_elements('vertexes')[:]  # copy
+    if 'original' in material_order:
+        new_vertexes = pmx.get_elements('vertexes')[:]  # copy
+        v_index = pmx.counts['vertexes'].count
+        morph_added = [len(pmx.get_elements('morphs')), 0]
+    else:
+        new_vertexes = list()
+        v_index = 0
+        morph_added = [0, 0]
     new_faces = list()
     original_morphs = list()
     new_materials = list()
     new_morphs = list()
-    v_index = pmx.counts['vertexes'].count
     m_index = 0
-    morph_added = [len(pmx.get_elements('morphs')), 0]
     for material_group in material_order:
         if 'original' == material_group:
             if 0 == m_index:
@@ -491,7 +497,10 @@ def make_brj_pmx(pmx):
         for i in range(morph_added[1])]
     disp_nodes = pmx.get_elements('disp_nodes')
     # expression
-    new_items = disp_nodes[1].disp_node_items + tuple(additional_items)
+    if 'original' in material_order:
+        new_items = disp_nodes[1].disp_node_items + tuple(additional_items)
+    else:
+        new_items = tuple(additional_items)
     disp_nodes[1] = disp_nodes[1]._replace(
         n_disp_node_items=len(new_items), disp_node_items=new_items)
     pmx.set_elements('disp_nodes', disp_nodes)
