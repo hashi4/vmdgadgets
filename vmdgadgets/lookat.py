@@ -344,8 +344,7 @@ class LookAt():
 
     def setup_target(self, queue):
         if 'CAMERA' == self.target_mode:
-            self.target_transform = vmdmotion.CameraTransformation(
-                self.target_motions)
+            self.target_transform = vmdmotion.VmdMotion(self.target_motions)
             sorted_motions = self.target_transform.sorted_motions
             for i, motion in enumerate(sorted_motions):
                 type = 'c' if (

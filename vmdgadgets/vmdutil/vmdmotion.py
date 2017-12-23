@@ -1,6 +1,7 @@
 import bisect
 
 from . import vmdutil
+from . import vmddef
 from . import pmxutil
 from . import pmxdef
 
@@ -37,6 +38,128 @@ def get_global_transform(this_transform, this_bone_def,
     return this_global_rot, this_global_pos
 
 
+BONE_FIELD = ['rotation', 'position']
+CAMERA_FIELD = ['rotation', 'position', 'distance', 'angle_of_view']
+MORPH_FIELD = ['weight']
+LIGHT_FIELD = ['rgb', 'direction']
+NO_NAME = '12345678901234567890'  # motoin name must <= 15 bytes
+
+
+class VmdMotion():
+    def interpolate_morph(self, frame_no, begin, end):
+        t = (frame_no - begin.frame) / (end.frame - begin.frame)
+        return vmdutil.lerp_v([begin.weight], [end.weight], t)[0]
+
+    def interpolate_light(self, frame_no, begin, end):
+        t = (frame_no - begin.frame) / (end.frame - begin.frame)
+        rgb = vmdutil.lerp_v(begin.rgb, end.rgb, t)
+        direction = vmdutil.lerp_v(begin.direction, end.direction, t)
+        return rgb, direction
+
+    def interpolate_bone(self, frame_no, begin, end):
+        return (  # rotation position
+            vmdutil.interpolate_rotation(frame_no, begin, end, 'bones'),
+            vmdutil.interpolate_position(frame_no, begin, end, 'bones'),
+        )
+
+    def interpolate_camera(self, frame_no, begin, end):
+        return (  # rotation, position, distance, angle of view
+            vmdutil.interpolate_rotation(frame_no, begin, end, 'cameras'),
+            vmdutil.interpolate_position(frame_no, begin, end, 'cameras'),
+            vmdutil.interpolate_camera_distance(frame_no, begin, end),
+            vmdutil.interpolate_camera_angle_of_view(frame_no, begin, end),
+        )
+
+    def __init__(self, motion_defs):
+        self.switchcase = {
+            # (field_names, interpolation, default)
+            vmddef.morph: (
+                MORPH_FIELD, self.interpolate_morph, 0),
+            vmddef.bone: (
+                BONE_FIELD, self.interpolate_bone,
+                (vmddef.BONE_SAMPLE.rotation, vmddef.BONE_SAMPLE.position)),
+            vmddef.camera: (
+                CAMERA_FIELD, self.interpolate_camera,
+                (vmddef.CAMERA_SAMPLE.rotation, vmddef.CAMERA_SAMPLE.position,
+                 vmddef.CAMERA_SAMPLE.distance,
+                 vmddef.CAMERA_SAMPLE.angle_of_view)),
+            vmddef.light: (
+                LIGHT_FIELD, self.interpolate_light,
+                (vmddef.LIGHT_SAMPLE.rgb, vmddef.LIGHT_SAMPLE.direction)),
+            None: (None, None, None)
+        }
+
+        self.motion_defs = motion_defs
+        if len(motion_defs) <= 0:
+            self.motion_name_dict = {}
+            self.motion_frame_dict = {}
+            self.sorted_keyframes = {}
+            self.kind = None
+        else:
+            self.kind = motion_defs[0].__class__
+            if 'name' in motion_defs[0]._fields:
+                self.motion_name_dict = vmdutil.make_name_dict(
+                    vmdutil.frames_to_dict(motion_defs), True)
+            else:
+                self.sorted_motions = sorted(
+                    motion_defs, key=lambda e: e.frame)
+                self.motion_name_dict = {NO_NAME: self.sorted_motions}
+            self.motion_frame_dict = {  # {name: {frame_no: motion_def}}
+                name: {
+                    motion.frame: motion
+                    for motion in self.motion_name_dict[name]}
+                for name in self.motion_name_dict}
+            self.sorted_keyframes = {  # {bone_name: [frame_no]} for bisect
+                name:
+                [frame.frame for frame in self.motion_name_dict[name]]
+                for name in self.motion_name_dict}
+
+    def get_vmd_frame(self, frame_no, name=NO_NAME):
+        # Return motion if the frame_no in vmd, otherwise return None
+        d = self.motion_frame_dict.get(name)
+        return None if d is None else (
+            self.motion_frame_dict[name].get(frame_no))
+
+    def get_vmd_index(self, frame_no, name=NO_NAME):
+        # Return index or closest below index of the frame_no
+        # in sorted list of vmd keyframes
+        keys = self.sorted_keyframes[name]
+        index = bisect.bisect_left(keys, frame_no)
+        if index <= len(keys) - 1 and keys[index] == frame_no:
+            return index, True
+        else:
+            return index - 1, False
+
+    def get_vmd_transform(self, frame_no, name=NO_NAME):
+        def collect_fields(frame):
+            d = frame._asdict()
+            r = [d[field] for field in self.switchcase[self.kind][0]]
+            return tuple(r) if len(r) > 0 else r[0]
+
+        if name not in self.motion_frame_dict:
+            return self.switchcase[self.kind][2]  # return default
+
+        frame_dict = self.motion_frame_dict[name]
+        key_frames = self.sorted_keyframes[name]
+        vmd_index, is_key_frame = self.get_vmd_index(frame_no, name)
+        if is_key_frame:
+            m = frame_dict[frame_no]
+            result = collect_fields(m)
+        else:
+            if vmd_index < 0:
+                first_frame = frame_dict[key_frames[0]]
+                result = collect_fields(first_frame)
+            else:
+                begin = frame_dict[key_frames[vmd_index]]
+                if vmd_index < len(key_frames) - 1:
+                    end = frame_dict[key_frames[vmd_index + 1]]
+                    result = self.switchcase[self.kind][1](
+                        frame_no, begin, end)
+                else:
+                    result = collect_fields(begin)
+        return result
+
+
 class BoneTransformation():
     """ Transform the bone at frame_no according to vmd motion,
     and stores those results.
@@ -62,6 +185,9 @@ class BoneTransformation():
         """
         self.bone_defs = bone_defs
         self.motion_defs = motion_defs
+        self.vmd_motion = VmdMotion(motion_defs)
+        self.motion_name_dict = self.vmd_motion.motion_name_dict
+
         self.mandatory_bone_names = (
             mandatory_bone_names[:]
             if mandatory_bone_names is not None else [])
@@ -70,9 +196,6 @@ class BoneTransformation():
         self.mandatory_bone_indexes = [
             self.bone_name_to_index[name]
             for name in self.mandatory_bone_names]
-
-        self.motion_name_dict = vmdutil.make_name_dict(
-            vmdutil.frames_to_dict(motion_defs), True)
 
         self.transform_bone_graph = self.make_bone_graph(subgraph)
 
@@ -84,18 +207,6 @@ class BoneTransformation():
         self.leaf_indexes = [
             bone_index for bone_index in self.transform_bone_indexes if
             self.transform_bone_graph.out_degree(bone_index) == 0]
-
-        self.motion_frame_dict = {  # {bone_name: {frame_no: motion_def}}
-            bone_name: {
-                motion.frame: motion
-                for motion in self.motion_name_dict[bone_name]}
-            for bone_name in self.transform_bone_names if
-            bone_name in self.motion_name_dict}
-        self.sorted_keyframes = {  # {bone_name: [frame_no]} for bisect
-            bone_name:
-            [frame.frame for frame in self.motion_name_dict[bone_name]]
-            for bone_name in self.transform_bone_names if
-            bone_name in self.motion_name_dict}
 
         # {frame_no: {bone_index: (global, local, additional)}}
         self.transform_dict = dict()
@@ -172,59 +283,22 @@ class BoneTransformation():
             self.delete(frame_no, child_bone)
 
     def get_vmd_frame(self, frame_no, bone_name):
-        # Return frame if the frame_no in vmd, otherwise return None
-        d = self.motion_frame_dict.get(bone_name)
-        return None if d is None else (
-            self.motion_frame_dict[bone_name].get(frame_no))
+        return self.vmd_motion.get_vmd_frame(frame_no, bone_name)
 
     def get_vmd_index(self, frame_no, bone_name):
-        # Return index or closest below index of the frame_no
-        # in sorted list of vmd keyframes
-        keys = self.sorted_keyframes[bone_name]
-        index = bisect.bisect_left(keys, frame_no)
-        if index <= len(keys) - 1 and keys[index] == frame_no:
-            return index, True
-        else:
-            return index - 1, False
+        return self.vmd_motion.get_vmd_index(frame_no, bone_name)
 
     def get_vmd_transform(self, frame_no, bone_index):
         bone_name = self.bone_defs[bone_index].name_jp
-        if bone_name not in self.motion_frame_dict:  # bone not in vmd
-            return vmdutil.QUATERNION_IDENTITY, (0, 0, 0)
-
-        frame_dict = self.motion_frame_dict[bone_name]
-        key_frames = self.sorted_keyframes[bone_name]
         bone_def = self.bone_defs[bone_index]
-        vmd_index, is_key_frame = self.get_vmd_index(frame_no, bone_name)
-
-        if is_key_frame:
-            m = frame_dict[frame_no]
-            rotation = m.rotation
-            position = m.position
-        else:
-            if vmd_index < 0:
-                first_frame = frame_dict[key_frames[0]]
-                rotation = first_frame.rotation
-                position = first_frame.position
-            else:
-                begin = frame_dict[key_frames[vmd_index]]
-                if vmd_index < len(key_frames) - 1:
-                    end = frame_dict[key_frames[vmd_index + 1]]
-                    if (bone_def.flag & pmxdef.BONE_CAN_TRANSLATE ==
-                            pmxdef.BONE_CAN_TRANSLATE):
-                        position = vmdutil.interpolate_position(
-                            frame_no, begin, end, 'bones')
-                    else:
-                        position = [0, 0, 0]
-                    if (bone_def.flag & pmxdef.BONE_CAN_ROTATE ==
-                            pmxdef.BONE_CAN_ROTATE):
-                        rotation = vmdutil.interpolate_rotation(
-                            frame_no, begin, end, 'bones')
-                    else:
-                        rotation = vmdutil.QUATERNION_IDENTITY
-                else:
-                    rotation = begin.rotation
-                    position = begin.position
+        rotation, position = self.vmd_motion.get_vmd_transform(
+            frame_no, bone_name)
+        if (bone_def.flag & pmxdef.BONE_CAN_TRANSLATE !=
+                pmxdef.BONE_CAN_TRANSLATE):
+            position = [0, 0, 0]
+        if (bone_def.flag & pmxdef.BONE_CAN_ROTATE !=
+                pmxdef.BONE_CAN_ROTATE):
+            rotation = vmdutil.QUATERNION_IDENTITY
         return rotation, position
 
     def get_additional_transform(self, frame_no, bone_index):
@@ -292,7 +366,7 @@ class BoneTransformation():
                     frame_no, self.ext_bone_index)
                 global_transform = get_global_transform(
                     vmd_transform, self.bone_defs[bone_index],
-                    ext_v, self.bone_defs[bone_index], #  ext pos = this pos
+                    ext_v, self.bone_defs[bone_index],  # ext pos = this pos
                     ext_g)
         else:
             parent_index = next(
@@ -311,50 +385,3 @@ class BoneTransformation():
             frame_no, bone_index, global_transform, vmd_transform,
             additional_transform)
         return global_transform, vmd_transform, additional_transform
-
-
-class CameraTransformation():
-    def __init__(self, motion_defs):
-        self.motion_defs = motion_defs
-        self.sorted_motions = sorted(motion_defs, key=lambda e: e.frame)
-        self.motion_frame_dict = vmdutil.frames_to_dict(motion_defs)
-        self.sorted_keyframes = [m.frame for m in self.sorted_motions]
-
-    def get_vmd_frame(self, frame_no):
-        return self.motion_frame_dict.get(frame_no)
-
-    def get_vmd_index(self, frame_no):
-        keys = self.sorted_keyframes
-        index = bisect.bisect_left(keys, frame_no)
-        if index <= len(keys) - 1 and keys[index] == frame_no:
-            return index, True
-        else:
-            return index - 1, False
-
-    def get_vmd_transform(self, frame_no):
-        vmd_index, is_key_frame = self.get_vmd_index(frame_no)
-        if is_key_frame:
-            m = self.motion_frame_dict[frame_no][0]
-            rotation = m.rotation
-            position = m.position
-            distance = m.distance
-            angle_of_view = m.angle_of_view
-        else:
-            key_frames = self.sorted_keyframes
-            begin = self.motion_frame_dict[key_frames[vmd_index]][0]
-            if vmd_index < len(key_frames) - 1:
-                end = self.motion_frame_dict[key_frames[vmd_index + 1]][0]
-                position = vmdutil.interpolate_position(
-                    frame_no, begin, end, 'cameras')
-                rotation = vmdutil.interpolate_rotation(
-                    frame_no, begin, end, 'cameras')
-                distance = vmdutil.interpolate_camera_distance(
-                    frame_no, begin, end)
-                angle_of_view = vmdutil.interpolate_camera_angle_of_view(
-                    frame_no, begin, end)
-            else:
-                rotation = begin.rotation
-                position = begin.position
-                distance = begin.distance
-                angle_of_view = begin.angle_of_view
-        return rotation, position, distance, angle_of_view

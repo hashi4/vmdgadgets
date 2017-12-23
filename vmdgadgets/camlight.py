@@ -52,7 +52,7 @@ __doc__ += _parser.format_help()
 
 
 def camera_to_light(camera_frame, against=None, rx=0.0, ry=0.0,
-        rgb=RGB, y_only=False):
+                    rgb=RGB, y_only=False):
     rx = math.radians(rx)
     ry = math.radians(ry)
     yaw_inverse = -1.0 if against and 'y' in against else 1.0
@@ -79,7 +79,7 @@ def camlight(vmdin, against=None, rx=0.0, ry=0.0, rgb=RGB,
             camera_to_light(camera_frame, against, rx, ry, rgb, y_only))
     if add_frames is not None:
         camera_frames = vmdin.get_frames('cameras')
-        camera_motion = vmdmotion.CameraTransformation(camera_frames)
+        camera_motion = vmdmotion.VmdMotion(camera_frames)
         for frame_no in add_frames:
             frame_no = int(frame_no)
             if camera_motion.get_vmd_frame(frame_no) is None:
@@ -88,7 +88,8 @@ def camlight(vmdin, against=None, rx=0.0, ry=0.0, rgb=RGB,
                 camera_frame = vmddef.camera(
                     frame_no, distance, position, rotation, None, None, None)
                 light_frames.append(
-                    camera_to_light(camera_frame, against, rx, ry, rgb, y_only))
+                    camera_to_light(
+                        camera_frame, against, rx, ry, rgb, y_only))
     out = vmdutil.Vmdio()
     out.header = vmddef.header(
         vmddef.HEADER1, vmddef.HEADER2_CAMERA)
