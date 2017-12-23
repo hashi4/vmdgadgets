@@ -355,7 +355,8 @@ class LookAt():
             return
         elif 'MODEL' == self.target_mode:
             bone_defs = self.bone_defs[self.TARGET]
-            self.bone_dict[self.TARGET] = d = pmxutil.make_index_dict(bone_defs)
+            self.bone_dict[self.TARGET] = d = (
+                pmxutil.make_index_dict(bone_defs))
             if self.target_bone not in d:
                 raise Exception('target bone is not in pmx.')
             if self.target_bone == '両目':
@@ -704,7 +705,8 @@ class LookAt():
                     self.copy_vmd_of_overwrite_bones(frame_no, frame_type))
                 continue
 
-            if not vmd_blend and o_frame_pattern.match(frame_type):
+            if (not vmd_blend and not self.vmd_lerp and
+                    o_frame_pattern.match(frame_type)):
                 continue
 
             target_pos = self.get_target_pos(frame_no)
