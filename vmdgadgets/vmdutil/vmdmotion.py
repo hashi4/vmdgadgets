@@ -134,7 +134,7 @@ class VmdMotion():
         def collect_fields(frame):
             d = frame._asdict()
             r = [d[field] for field in self.switchcase[self.kind][0]]
-            return tuple(r) if len(r) > 0 else r[0]
+            return tuple(r) if len(r) > 1 else r[0]
 
         if name not in self.motion_frame_dict:
             return self.switchcase[self.kind][2]  # return default
