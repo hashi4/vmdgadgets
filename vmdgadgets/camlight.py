@@ -44,6 +44,8 @@ def _make_argumentparser():
         '--add_frames', nargs='*', default=None,
         metavar='frame_no',
         help='''Add light frames.''')
+    parser.add_argument(
+        '--auto_add_frames', nargs='?', type=float, const=90.0, default=None)
     return parser
 
 
@@ -71,12 +73,55 @@ def camera_to_light(camera_frame, against=None, rx=0.0, ry=0.0,
         camera_frame.frame, tuple(rgb), tuple(camera_direction))
 
 
+def check_camera_rotation(camera_frames, threshold=math.pi * .5):
+    sorted_frames = sorted(camera_frames, key=lambda f: f.frame)
+
+    def op(x1, x2):
+        return [abs(x1.rotation[i] - x2.rotation[i]) for i in range(2)]
+
+    diffs = vmdutil.adjacent_difference(sorted_frames, op)
+    diffs = [max(i[0], i[1]) for i in diffs]
+    supply_frames = list()
+    for index, diff in enumerate(diffs):
+        if diff > threshold:
+            n = int(diff * 2 // threshold)
+            frame_diff = (
+                sorted_frames[index + 1].frame - sorted_frames[index].frame)
+            if frame_diff <= 1:
+                continue
+            while True:
+                p = frame_diff // n
+                if p > 0:
+                    break
+                else:
+                    n -= 1
+            for i in range(n - 1):
+                supply_frames.append(
+                    sorted_frames[index].frame + int(p) * (i + 1))
+    if len(supply_frames) > 0:
+        return supply_frames
+    else:
+        return None
+
+
+def merge_list(a, b):
+    if a is None or len(a) <= 0:
+        return b
+    if b is None or len(b) <= 0:
+        return a
+    return list(set(a).union(b))
+
+
 def camlight(vmdin, against=None, rx=0.0, ry=0.0, rgb=RGB,
-             y_only=False, add_frames=None):
+             y_only=False, add_frames=None, auto_add_frames=None):
     light_frames = []
     for camera_frame in vmdin.get_frames('cameras'):
         light_frames.append(
             camera_to_light(camera_frame, against, rx, ry, rgb, y_only))
+    if auto_add_frames:
+        a_frames = check_camera_rotation(
+            vmdin.get_frames('cameras'), math.radians(auto_add_frames))
+        add_frames = merge_list(add_frames, a_frames)
     if add_frames is not None:
         camera_frames = vmdin.get_frames('cameras')
         camera_motion = vmdmotion.VmdMotion(camera_frames)
@@ -98,18 +143,22 @@ def camlight(vmdin, against=None, rx=0.0, ry=0.0, rgb=RGB,
 
 
 def camlight_fd(infile, outfile, against=None, rx=0.0, ry=0.0,
-                rgb=RGB, y_only=False, add_frames=None):
+                rgb=RGB, y_only=False, add_frames=None,
+                auto_add_frames=False):
     vmdin = vmdutil.Vmdio()
     vmdin.load_fd(infile)
-    vmdout = camlight(vmdin, against, rx, ry, rgb, y_only, add_frames)
+    vmdout = camlight(
+        vmdin, against, rx, ry, rgb, y_only, add_frames, auto_add_frames)
     vmdout.store_fd(outfile)
 
 
 def camlight_fname(infile, outfile, against=None, rx=0.0, ry=0.0,
-                   rgb=RGB, y_only=False, add_frames=None):
+                   rgb=RGB, y_only=False, add_frames=None,
+                   auto_add_frames=False):
     vmdin = vmdutil.Vmdio()
     vmdin.load(infile)
-    vmdout = camlight(vmdin, against, rx, ry, rgb, y_only, add_frames)
+    vmdout = camlight(
+        vmdin, against, rx, ry, rgb, y_only, add_frames, auto_add_frames)
     vmdout.store(outfile)
 
 
