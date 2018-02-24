@@ -187,6 +187,7 @@ class BoneTransformation():
         self.motion_defs = motion_defs
         self.vmd_motion = VmdMotion(motion_defs)
         self.motion_name_dict = self.vmd_motion.motion_name_dict
+        self.motion_index_dict = vmdutil.make_index_dict(motion_defs, True)
 
         self.mandatory_bone_names = (
             mandatory_bone_names[:]
@@ -288,6 +289,21 @@ class BoneTransformation():
     def get_vmd_index(self, frame_no, bone_name):
         return self.vmd_motion.get_vmd_index(frame_no, bone_name)
 
+    def replace_vmd_frames(self, frames):
+        rep = self.motion_defs[:]
+        if len(frames) <= 0:
+            return
+        bone_name = vmdutil.b_to_str(frames[0].name)
+        name_frames = self.motion_index_dict.get(bone_name)
+        if name_frames:
+            for frame in frames:
+                index = name_frames.get(frame.frame)
+                if index:
+                    rep[index] = frame
+        self.motion_defs = rep
+        self.vmd_motion = VmdMotion(self.motion_defs)
+        return
+
     def get_vmd_transform(self, frame_no, bone_index):
         bone_name = self.bone_defs[bone_index].name_jp
         bone_def = self.bone_defs[bone_index]
@@ -309,10 +325,13 @@ class BoneTransformation():
             raise Exception('local addition is not supported.')
         if flag & (pmxdef.BONE_ADD_ROTATE | pmxdef.BONE_ADD_TRANSLATE) > 0:
             add_parent_index, add_scale = bone_def.additional_transform
-            add_global, add_vmd, add_add = self.do_transform(
+            add_trans = self.do_transform(
                 frame_no, add_parent_index)
             additional_rot = vmdutil.QUATERNION_IDENTITY
             additional_pos = (0, 0, 0)
+            if add_trans is None:
+                return (additional_rot, additional_pos)
+            add_global, add_vmd, add_add = add_trans
             # rot
             if flag & pmxdef.BONE_ADD_ROTATE == pmxdef.BONE_ADD_ROTATE:
                 if add_add is None:

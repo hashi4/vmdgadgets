@@ -118,6 +118,7 @@ class LookAt():
         self.additional_frame_nos = []
         self.near_mode = False
         self.vmd_lerp = False
+        self.use_vmd_interpolation = False
         self.WATCHER = 0
         self.TARGET = 1
         self.WATCHER_EX = 2
@@ -177,6 +178,9 @@ class LookAt():
     def set_vmd_lerp(self, b):
         self.vmd_lerp = b
 
+    def set_use_vmd_interpolation(self, b):
+        self.use_vmd_interpolation = b
+
     def set_additional_frames(self, frame_nos):
         self.additional_frame_nos = frame_nos
 
@@ -188,6 +192,8 @@ class LookAt():
             queue.push(MotionFrame(frame_no, 'u', -1, 'A'))
 
     def need_vmd_blend(self):
+        if self.use_vmd_interpolation:
+            return False
         for b in self.vmd_blend_ratios.values():
             for r in b:
                 if r > 0:
@@ -427,10 +433,17 @@ class LookAt():
                 for i in range(len(turn))]
         return turn
 
-    def copy_vmd_of_overwrite_bones(self, frame_no, frame_type):
+    def copy_vmd_of_overwrite_bones(
+            self, frame_no, frame_type, bone_name=None):
         if 'o' not in frame_type:
             return []
         new_frames = list()
+        if bone_name is not None:
+            frame = self.watcher_transform.get_vmd_frame(frame_no, bone_name)
+            if frame is not None:
+                return [frame]
+            else:
+                return []
         for bone_name in self.overwrite_bones:
             frame = self.watcher_transform.get_vmd_frame(frame_no, bone_name)
             if frame is not None:
@@ -551,7 +564,8 @@ class LookAt():
 
     def make_look_at_frames(
             self, frame_type, frame_no, target_pos,
-            next_frame_no, next_center_transform, next_target_pos):
+            next_frame_no, next_center_transform, next_target_pos,
+            bone_index=None):
 
         overwrite_frames = list()
         bone_defs = self.watcher_transform.bone_defs
@@ -575,21 +589,50 @@ class LookAt():
             cpos = (0, 0, 0)
             watcher_v = (0, 0, 0)
 
-        for bone_index in self.overwrite_indexes:
-            bone_def = bone_defs[bone_index]
+        def get_lookat_frame(b_index):
+            result = list()
+            bone_def = bone_defs[b_index]
             bone_name = bone_def.name_jp
             hrot = self.get_rotation(
-                frame_no, frame_type, bone_index,
+                frame_no, frame_type, b_index,
                 watcher_v, target_v, target_pos)
-            if hrot is None:
-                return []
+            if hrot is None:  # ignore_case
+                if (self.use_vmd_interpolation and
+                    b_index not in self.watcher_transform.leaf_indexes):
+                    vmd_frame = self.watcher_transform.get_vmd_frame(
+                        frame_no, bone_name)
+                    if vmd_frame:
+                        result.append(vmd_frame)
+                return result
             self.watcher_transform.do_transform(
-                frame_no, bone_index, (hrot, (0, 0, 0)))
-            overwrite_frames.append(vmddef.BONE_SAMPLE._replace(
-                frame=frame_no,
-                name=bone_name.encode(vmddef.ENCODING),
-                rotation=hrot))
+                frame_no, b_index, (hrot, (0, 0, 0)))
+            if (not self.use_vmd_interpolation or
+                    b_index in self.watcher_transform.leaf_indexes):
+                result.append(vmddef.BONE_SAMPLE._replace(
+                    frame=frame_no,
+                    name=bone_name.encode(vmddef.ENCODING),
+                    rotation=hrot))
+            else:
+                vmd_frame = self.watcher_transform.get_vmd_frame(
+                    frame_no, bone_name)
+                if vmd_frame:
+                    result.append(vmd_frame._replace(
+                        rotation=hrot))
+            return result
 
+        if bone_index is not None:
+            result = get_lookat_frame(bone_index)
+            if 0 == len(result):
+                return []
+            else:
+                overwrite_frames.extend(result)
+        else:
+            for bone_index in self.overwrite_indexes:
+                result = get_lookat_frame(bone_index)
+                if 0 == len(result):
+                    return []
+                else:
+                    overwrite_frames.extend(result)
         # vmd_blend
         if self.need_vmd_blend():
             overwrite_frames = self.blend_vmd(
@@ -662,14 +705,16 @@ class LookAt():
                 [math.acos(vmdutil.clamp(vmdutil.diff_q(
                     motion.rotation, prev['frames'][motion.name].rotation)[3],
                     -1, 1))
-                    for motion in overwrite_frames])
+                    for motion in overwrite_frames if
+                    prev['frames'].get(motion.name) is not None])
 
             omega = maxrot / (frame_no - prev['frame_no'])
             if omega > self.omega_limit:
                 delay_to = math.ceil(maxrot / self.omega_limit) + frame_no
                 while True:
                     peek = queue.top()
-                    if peek is None or delay_to <= peek.frame_no:
+                    if (peek is None or delay_to <= peek.frame_no or
+                            'o' in peek.type):
                         break
                     queue.pop()
                 queue.push(MotionFrame(delay_to, 'r', -1, 'DELAY'))
@@ -679,7 +724,78 @@ class LookAt():
         else:
             return overwrite_frames
 
+    def look_at_npath(self):
+        self.load()
+        queue = PriorityQueue()
+        self.setup_watcher(queue)
+        self.setup_target(queue)
+        self.add_frames(queue)
+        new_frames = dict()
+        bone_defs = self.watcher_transform.bone_defs
+        queue_backup = queue.queue
+
+        for bone_index in self.overwrite_indexes:
+            bone_name = bone_defs[bone_index].name_jp
+            queue.queue = queue_backup[:]
+            new_frames[bone_index] = list()
+            is_leaf = bone_index in self.watcher_transform.leaf_indexes
+            prev_overwrites = {'frame_no': -1, 'frames': []}
+            while True:
+                motion_frame = queue.pop()
+                if motion_frame is None:
+                    break
+                frame_no = motion_frame.frame_no
+                frame_type = motion_frame.type
+                while (queue.top() is not None and
+                        queue.top().frame_no == frame_no):
+                    dummy = queue.pop()
+                    frame_type += dummy.type
+
+                if not self.frame_ranges.is_in_range(frame_no):
+                    new_frames[bone_index].extend(
+                        self.copy_vmd_of_overwrite_bones(
+                            frame_no, frame_type, bone_name))
+                    continue
+
+                if (not is_leaf and self.watcher_transform.get_vmd_frame(
+                        frame_no, bone_name) is None):
+                    continue
+
+                target_pos = self.get_target_pos(frame_no)
+                next_frame = queue.top()
+                if next_frame is not None:
+                    next_frame_no = next_frame.frame_no
+                    next_center_transform = (
+                        self.get_watcher_center_transform(next_frame_no))
+                    # TODO reuse
+                    next_target_pos = self.get_target_pos(next_frame_no)
+                else:
+                    next_frame_no = None
+                    next_center_transform = None
+                    next_target_pos = None
+                overwrite_frames = self.make_look_at_frames(
+                        frame_type, frame_no, target_pos,
+                        next_frame_no, next_center_transform,
+                        next_target_pos,
+                        bone_index)
+                if len(overwrite_frames) <= 0:
+                    continue
+                if (is_leaf and 'CAMERA' == self.target_mode and
+                        self.omega_limit > 0):
+                    overwrite_frames = self.camera_delay(
+                        frame_no, frame_type, overwrite_frames,
+                        queue, prev_overwrites)
+                    if len(overwrite_frames) > 0:
+                        prev_overwrites['frame_no'] = frame_no
+                        prev_overwrites['frames'] = {
+                            frame.name: frame for frame in overwrite_frames}
+                new_frames[bone_index].extend(overwrite_frames)
+            self.watcher_transform.replace_vmd_frames(new_frames[bone_index])
+        return [f for inner_list in new_frames.values() for f in inner_list]
+
     def look_at(self):
+        if self.use_vmd_interpolation:
+            return self.look_at_npath()
         self.load()
         queue = PriorityQueue()
         self.setup_watcher(queue)
@@ -706,6 +822,7 @@ class LookAt():
                 continue
 
             if (not vmd_blend and not self.vmd_lerp and
+                    not self.use_vmd_interpolation and
                     o_frame_pattern.match(frame_type)):
                 continue
 

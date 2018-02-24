@@ -46,6 +46,10 @@ def make_common_arguments(parser):
         '--vmd_lerp', action='store_true', default=False,
         help='''lerp lookat_dir and vmd_dir''')
     parser.add_argument(
+        '--use_vmd_interpolation', action='store_true', default=False,
+        help='''make frames at source vmd's key frames
+                using its interpolation, except for eyes''')
+    parser.add_argument(
         '--extlink1', nargs=3,
         help='''external bone, pmx vmd''')
     return parser
@@ -117,6 +121,8 @@ def set_common_options(args, l):
         l.set_near_mode(True)
     if args.vmd_lerp:
         l.set_vmd_lerp(True)
+    if args.use_vmd_interpolation:
+        l.set_use_vmd_interpolation(True)
     if args.extlink1:
         l.set_watcher_external_link(
             args.extlink1[0], args.extlink1[1], args.extlink1[2])
