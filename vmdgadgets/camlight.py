@@ -1,5 +1,5 @@
 '''
-Make light frames those direction are equal to camera.
+Make light frames whose direction are equal to camera.
 
 '''
 import math
