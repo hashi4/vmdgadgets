@@ -243,6 +243,10 @@ def get_interval(frame_no, sorted_frames, keys=None):
         return index - 1, False
 
 
+def interpolation_is_linear(cp):
+    return cp[0] == cp[1] and cp[2] == cp[3]
+
+
 def interpolate_position(frame_no, begin, end, element='bones'):
     if element == 'bones':
         cp = vmddef.bone_vmdformat_to_controlpoints(end.interpolation)
@@ -250,17 +254,20 @@ def interpolate_position(frame_no, begin, end, element='bones'):
         cp = vmddef.camera_vmdformat_to_controlpoints(end.interpolation)
     else:
         return None
-    cpf = [[p[axis] / 127.0 for p in cp] for axis in range(len(cp[0]))]
+    cpi = [[p[axis] for p in cp] for axis in range(len(cp[0]))]
     bx = (frame_no - begin.frame) / (end.frame - begin.frame)
     result = []
     for axis in range(3):  # X, Y, Z
         begin_pos = begin.position[axis]
         end_pos = end.position[axis]
         pos_delta = end_pos - begin_pos
-        xcp = [0.0, cpf[axis][0], cpf[axis][2], 1.0]
-        t = vmdbezier.bezier3f_x2t(xcp, bx)
-        ycp = [0.0, cpf[axis][1], cpf[axis][3], 1.0]
-        by = vmdbezier.bezier3f(ycp, t)
+        if interpolation_is_linear(cpi[axis]) is True:
+            by = bx
+        else:
+            xcp = [0.0, cpi[axis][0] / 127.0, cpi[axis][2] / 127.0, 1.0]
+            t = vmdbezier.bezier3f_x2t(xcp, bx)
+            ycp = [0.0, cpi[axis][1] / 127.0, cpi[axis][3] / 127.0, 1.0]
+            by = vmdbezier.bezier3f(ycp, t)
         result.append(begin_pos + pos_delta * by)
     return result
 
@@ -567,12 +574,16 @@ def interpolate_rotation(frame_no, begin, end, element='bones'):
         cp = vmddef.camera_vmdformat_to_controlpoints(end.interpolation)
     else:
         return None
-    cpf = [[p[axis] / 127.0 for p in cp] for axis in range(len(cp[0]))]
+    cpi = [[p[axis] for p in cp] for axis in range(len(cp[0]))]
     bx = (frame_no - begin.frame) / (end.frame - begin.frame)
-    xcp = [0.0, cpf[3][0], cpf[3][2], 1.0]
-    t = vmdbezier.bezier3f_x2t(xcp, bx)
-    ycp = [0.0, cpf[3][1], cpf[3][3], 1.0]
-    by = vmdbezier.bezier3f(ycp, t)
+
+    if interpolation_is_linear(cpi[3]):
+        by = bx
+    else:
+        xcp = [0.0, cpi[3][0] / 127.0, cpi[3][2] / 127.0, 1.0]
+        t = vmdbezier.bezier3f_x2t(xcp, bx)
+        ycp = [0.0, cpi[3][1] / 127.0, cpi[3][3] / 127.0, 1.0]
+        by = vmdbezier.bezier3f(ycp, t)
     if 'bones' == element:
         return slerp_q(begin.rotation, end.rotation, by)
     else:
@@ -581,23 +592,29 @@ def interpolate_rotation(frame_no, begin, end, element='bones'):
 
 def interpolate_camera_distance(frame_no, begin, end):
     cp = vmddef.camera_vmdformat_to_controlpoints(end.interpolation)
-    cpf = [[p[axis] / 127.0 for p in cp] for axis in range(len(cp[0]))]
+    cpi = [[p[axis] for p in cp] for axis in range(len(cp[0]))]
     bx = (frame_no - begin.frame) / (end.frame - begin.frame)
-    xcp = [0.0, cpf[4][0], cpf[4][2], 1.0]
-    t = vmdbezier.bezier3f_x2t(xcp, bx)
-    ycp = [0.0, cpf[4][1], cpf[4][3], 1.0]
-    by = vmdbezier.bezier3f(ycp, t)
+    if interpolation_is_linear(cpi[4]):
+        by = bx
+    else:
+        xcp = [0.0, cpi[4][0] / 127.0, cpi[4][2] / 127.0, 1.0]
+        t = vmdbezier.bezier3f_x2t(xcp, bx)
+        ycp = [0.0, cpi[4][1] / 127.0, cpi[4][3] / 127.0, 1.0]
+        by = vmdbezier.bezier3f(ycp, t)
     return lerp_v([begin.distance], [end.distance], by)[0]
 
 
 def interpolate_camera_angle_of_view(frame_no, begin, end):
     cp = vmddef.camera_vmdformat_to_controlpoints(end.interpolation)
-    cpf = [[p[axis] / 127.0 for p in cp] for axis in range(len(cp[0]))]
+    cpi = [[p[axis] for p in cp] for axis in range(len(cp[0]))]
     bx = (frame_no - begin.frame) / (end.frame - begin.frame)
-    xcp = [0.0, cpf[5][0], cpf[5][2], 1.0]
-    t = vmdbezier.bezier3f_x2t(xcp, bx)
-    ycp = [0.0, cpf[5][1], cpf[5][3], 1.0]
-    by = vmdbezier.bezier3f(ycp, t)
+    if interpolation_is_linear(cpi[5]):
+        by = bx
+    else:
+        xcp = [0.0, cpi[5][0] / 127.0, cpi[5][2] / 127.0, 1.0]
+        t = vmdbezier.bezier3f_x2t(xcp, bx)
+        ycp = [0.0, cpi[5][1] / 127.0, cpi[5][3] / 127.0, 1.0]
+        by = vmdbezier.bezier3f(ycp, t)
     return lerp_v([begin.angle_of_view], [end.angle_of_view], by)[0]
 
 
