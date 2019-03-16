@@ -597,8 +597,7 @@ class LookAt():
                 frame_no, frame_type, b_index,
                 watcher_v, target_v, target_pos)
             if hrot is None:  # ignore_case
-                if (self.use_vmd_interpolation and
-                    b_index not in self.watcher_transform.leaf_indexes):
+                if self.use_vmd_interpolation:
                     vmd_frame = self.watcher_transform.get_vmd_frame(
                         frame_no, bone_name)
                     if vmd_frame:
