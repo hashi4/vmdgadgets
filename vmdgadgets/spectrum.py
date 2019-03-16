@@ -20,6 +20,7 @@ from vmdutil import vmddef
 WAVE_MAX_VALUE = {1: 255, 2: 32768}
 MMD_FRAME_PER_SEC = 30
 DEFAULT_VMD_MAX_FRAME = 20000
+RESOLUTION = 1000
 
 
 def _make_argumentparser():
@@ -132,6 +133,7 @@ def get_magnitudes(frame_no, n_sample, wave_data, band_def, ranges):
         high = ranges[i][2]
         mag_max = max([spectrum[i] for i in range(low, high + 1)])
         result.append(mag_max)
+#        result.append(spectrum[ranges[i][1]])
     return result
 
 #
@@ -202,11 +204,6 @@ def meter_interpolation():
     return vmddef.bone_controlpoints_to_vmdformat(interpolation)
 
 
-def normalize_motion(frames):
-    frame_dict = vmdutil.frames_to_dict(frames)
-    return vmdutil.normalize_frames(frame_dict)
-
-
 def store_vmd(filename, bones, morphs, config):
     vmdo = vmdutil.Vmdio()
     vmdo.header = vmdo.header._replace(
@@ -216,11 +213,11 @@ def store_vmd(filename, bones, morphs, config):
     vmdo.store(filename)
 
 
-def mags2bonemotion(frame_no, band_no, magnitudes, config):
+def mk_bone_motion(info, config):
+    frame_no, band_no, mag = info
     bone_name = config['METER_BONE_NAME'].format(band_no).encode(
         vmddef.ENCODING)
-    scale = mag2scale(magnitudes[band_no], config['MIN_DB'])
-    b_scale = scale * config['BAR_HEIGHT']
+    b_scale = mag * config['BAR_HEIGHT']
     pos = (0, b_scale, 0)
     bone = vmddef.BONE_SAMPLE._replace(
         frame=frame_no,
@@ -228,21 +225,20 @@ def mags2bonemotion(frame_no, band_no, magnitudes, config):
     return bone
 
 
-def mags2viewmorph(frame_no, band_no, magnitudes, config):
+def mk_view_morph(info, config):
+    frame_no, band_no, mag = info
     morph_name = config['VIEW_MORPH_NAME'].format(band_no).encode(
         vmddef.ENCODING)
-    scale = mag2scale(magnitudes[band_no], config['MIN_DB'])
     morph = vmddef.morph(
-        morph_name, frame_no, scale * config['VIEW_MORPH_SCALE'])
+        morph_name, frame_no, mag * config['VIEW_MORPH_SCALE'])
     return morph
 
 
-def mags2metermorph(frame_no, band_no, magnitudes, config):
+def mk_meter_morph(info, config):
+    frame_no, band_no, mag = info
     morph_name = config['METER_MORPH_NAME'].format(band_no).encode(
         vmddef.ENCODING)
-    scale = mag2scale(magnitudes[band_no], config['MIN_DB'])
-    morph = vmddef.morph(
-        morph_name, frame_no, scale)
+    morph = vmddef.morph(morph_name, frame_no, mag)
     return morph
 
 
@@ -268,21 +264,22 @@ def fft_wave(infile, config):
     mmorph = 'USE_METER_MORPH' in config and config['USE_METER_MORPH'] is True
 
     mmd_frame_no = 0
-    vmd_recorded = 0
-    vmd_fno = 0
     maxf = config['VMD_MAX_FRAME'] if \
         'VMD_MAX_FRAME' in config else DEFAULT_VMD_MAX_FRAME
     vmd_per_frame = 2 * n_bands if vmorph else n_bands
-    maxf -= maxf % vmd_per_frame
     zero_paddings = vmd_per_frame * 2
     spare = vmd_per_frame * 1  # omajinai
 
     def overflow(vmd_recorded):
         return vmd_recorded >= maxf - zero_paddings - spare
 
-    def vmd_name(vmd_fno):
-        return '{0}_{1}{2}.vmd'.format(
-            config['METER_MODEL_NAME'], filename, vmd_fno)
+    def vmd_name(kind, no):
+        return '{0}_{1}_{2}{3:02d}.vmd'.format(
+            config['METER_MODEL_NAME'], filename, kind, no)
+
+    def vmd_name_all(kind):
+        return '{0}_{1}_{2}.vmd'.format(
+            config['METER_MODEL_NAME'], filename, kind)
 
     def insert_zero_frames(mmd_frame_no, bones, morphs):
         if mmorph:
@@ -296,56 +293,49 @@ def fft_wave(infile, config):
                 mmd_frame_no, n_bands, config)
         return
 
-    def insert_motion_frames(mmd_frame_no, mags, bones, morphs):
-        for b in range(n_bands):
-            if mmorph:
-                morphs.append(
-                    mags2metermorph(mmd_frame_no, b, mags, config))
-            else:
-                bones.append(
-                    mags2bonemotion(mmd_frame_no, b, mags, config))
-            if vmorph:
-                morphs.append(
-                    mags2viewmorph(mmd_frame_no, b, mags, config))
-        return
-
-    bones = list()
-    morphs = list()
-    while mmd_frame_no < mmd_frame_max:
-        # fft
+    ###
+    bone_list = [list() for i in range(n_bands)]
+    mmorph_list = [list() for i in range(n_bands)]
+    vmorph_list = [list() for i in range(n_bands)]
+    while mmd_frame_no <= mmd_frame_max:
         wave_frame = mmd2wave_frame(mmd_frame_no, wave_data.rate)
         mags = get_magnitudes(
             wave_frame, config['FFT_SAMPLE'], wave_data, band_def, ranges)
-        # record
         if mags:
-            insert_motion_frames(mmd_frame_no, mags, bones, morphs)
-            vmd_recorded += vmd_per_frame
-            if overflow(vmd_recorded):
-                # shrink
+            for band_no in range(n_bands):
+                scale = mag2scale(mags[band_no], config['MIN_DB'])
+                scale = int(scale * RESOLUTION)
+                scale /= RESOLUTION
+                info = (mmd_frame_no, band_no, scale)
                 if not mmorph:
-                    bones = normalize_motion(bones)
-                morphs = normalize_motion(morphs)
-                vmd_recorded = len(bones) + len(morphs)
-                if overflow(vmd_recorded):
-                    insert_zero_frames(mmd_frame_no + 1, bones, morphs)
-                    store_vmd(vmd_name(vmd_fno), bones, morphs, config)
-                    vmd_fno += 1
-                    bones.clear()
-                    morphs.clear()
-                    insert_zero_frames(mmd_frame_no, bones, morphs)
-                    vmd_recorded = vmd_per_frame
-                    mmd_frame_no += 1  # next frame
+                    bone_list[band_no].append(mk_bone_motion(info, config))
                 else:
-                    mmd_frame_no += config['FRAME_INCR']
-            else:
-                mmd_frame_no += config['FRAME_INCR']
-        else:
-            mmd_frame_no += config['FRAME_INCR']
+                    mmorph_list[band_no].append(mk_meter_morph(info, config))
+                if vmorph:
+                    vmorph_list[band_no].append(mk_view_morph(info, config))
+        mmd_frame_no += config['FRAME_INCR']
 
-    # rest
-    insert_zero_frames(mmd_frame_no, bones, morphs)
-    store_vmd(vmd_name(vmd_fno), bones, morphs, config)
-    return
+    # normalize
+    for band_no in range(n_bands):
+        bone_list[band_no] = vmdutil.remove_redundant_frames(
+            bone_list[band_no])
+        mmorph_list[band_no] = vmdutil.remove_redundant_frames(
+            mmorph_list[band_no])
+        vmorph_list[band_no] = vmdutil.remove_redundant_frames(
+            vmorph_list[band_no])
+
+
+    # vmd out
+    vmdout = vmdutil.Vmdio()
+    store_vmd(
+        vmd_name_all('b'),
+        [f for sublist in bone_list for f in sublist], [], config)
+    if mmorph:
+        for band_no in range(n_bands):
+            store_vmd(vmd_name('mm', band_no), [], mmorph_list[band_no], config)
+    if vmorph:
+        for band_no in range(n_bands):
+            store_vmd(vmd_name('vm', band_no), [], vmorph_list[band_no], config)
 
 
 def fft_wave_fname(infile, config):
