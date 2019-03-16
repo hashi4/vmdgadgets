@@ -702,10 +702,12 @@ class LookAt():
         if 'c' in frame_type:
             maxrot = max(
                 [math.acos(vmdutil.clamp(vmdutil.diff_q(
-                    motion.rotation, prev['frames'][motion.name].rotation)[3],
+                    motion.rotation,
+                    prev['frames'][vmdutil.b_to_str(motion.name)].rotation)[3],
                     -1, 1))
                     for motion in overwrite_frames if
-                    prev['frames'].get(motion.name) is not None])
+                    prev['frames'].get(
+                        vmdutil.b_to_str(motion.name)) is not None])
 
             omega = maxrot / (frame_no - prev['frame_no'])
             if omega > self.omega_limit:
@@ -787,7 +789,8 @@ class LookAt():
                     if len(overwrite_frames) > 0:
                         prev_overwrites['frame_no'] = frame_no
                         prev_overwrites['frames'] = {
-                            frame.name: frame for frame in overwrite_frames}
+                            vmdutil.b_to_str(frame.name):
+                            frame for frame in overwrite_frames}
                 new_frames[bone_index].extend(overwrite_frames)
             self.watcher_transform.replace_vmd_frames(new_frames[bone_index])
         return [f for inner_list in new_frames.values() for f in inner_list]
@@ -849,7 +852,8 @@ class LookAt():
             if len(overwrite_frames) > 0:
                 prev_overwrites['frame_no'] = frame_no
                 prev_overwrites['frames'] = {
-                    frame.name: frame for frame in overwrite_frames}
+                    vmdutil.b_to_str(frame.name):
+                    frame for frame in overwrite_frames}
             new_frames.extend(overwrite_frames)
             self.watcher_transform.delete(frame_no)
             if 'MODEL' == self.target_mode:
