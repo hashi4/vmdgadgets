@@ -444,6 +444,15 @@ def quaternion(v, rad):
     return [i * s / norm for i in v] + [c]
 
 
+def replace_dir_of_quaternion(q, v):
+    norm = norm_v(v)
+    c = q[3]
+    s = math.sqrt(1 - c * c)
+    if norm == 0:
+        norm = 1
+    return [i * s / norm for i in v] + [c]
+
+
 def conjugate_q(q):
     return [-q[0], -q[1], -q[2], q[3]]
 
@@ -556,9 +565,9 @@ def slerp_q(q1, q2, t):
     if dot < 0.995:
         angle = math.acos(dot)
         # (q1 * sin(angle * (1-t)) + qx * sin(angle * t))/sin(angle)
-        return scale_v(add_v(
+        return normalize_v(scale_v(add_v(
             scale_v(q1, math.sin(angle * (1 - t))),
-            scale_v(qx, math.sin(angle * t))), 1 / math.sin(angle))
+            scale_v(qx, math.sin(angle * t))), 1 / math.sin(angle)))
     else:
         return lerp_v(q1, qx, t)
 

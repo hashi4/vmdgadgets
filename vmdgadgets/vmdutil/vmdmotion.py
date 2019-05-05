@@ -27,7 +27,15 @@ def get_global_transform(this_transform, this_bone_def,
     this_global_pos = vmdutil.add_v(
         parent_global[1],
         vmdutil.rotate_v3q(bone_vector, parent_global[0]))
-    local_rot = this_transform[0]
+    if (this_bone_def.flag & pmxdef.BONE_AXIS_IS_FIXED ==
+            pmxdef.BONE_AXIS_IS_FIXED):
+            ax = this_bone_def.fixed_axis
+            if vmdutil.dot_v(ax, this_transform[0][:3]) < 0:
+                ax = vmdutil.scale_v(ax, -1)
+            local_rot = vmdutil.replace_dir_of_quaternion(
+                this_transform[0], ax)
+    else:
+        local_rot = this_transform[0]
     if additional_transform is not None:
         this_global_pos = vmdutil.add_v(
             this_global_pos, additional_transform[1])
