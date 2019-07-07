@@ -253,7 +253,7 @@ def pack_vertex(header, p):
     leading_part = p.position + p.normal + p.uv
     result += vertex_fixed.pack(*leading_part)
     for uv in p.ex_uvs:
-        result += struct.pack('<4f', *p)
+        result += struct.pack('<4f', *uv)
     result += struct.pack('<1B', p.weight_type)
     result += pack_vertexweight(p.weight_type, header.bone_isize, p.weight)
     result += struct.pack('<1f', p.edge_mag)
