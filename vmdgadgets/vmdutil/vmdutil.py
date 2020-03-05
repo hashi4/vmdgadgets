@@ -492,7 +492,8 @@ def rotate_v3q(v, q):
 
 
 def diff_q(q1, q2):
-    return multiply_quaternion(inverse_q(q1), q2)
+    #return multiply_quaternion(inverse_q(q1), q2)
+    return multiply_quaternion(q1, inverse_q(q2))
 
 
 def quaternion_to_matrix(q):
