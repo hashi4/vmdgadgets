@@ -701,9 +701,9 @@ class LookAt():
 
         if 'c' in frame_type:
             maxrot = max(
-                [math.acos(vmdutil.clamp(vmdutil.diff_q(
+                [2 * math.acos(vmdutil.clamp(vmdutil.dot_v(
                     motion.rotation,
-                    prev['frames'][vmdutil.b_to_str(motion.name)].rotation)[3],
+                    prev['frames'][vmdutil.b_to_str(motion.name)].rotation),
                     -1, 1))
                     for motion in overwrite_frames if
                     prev['frames'].get(
