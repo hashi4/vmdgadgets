@@ -10,6 +10,7 @@ from . import vmddef
 from . import vmdbezier
 
 EPS = 1e-10
+NEJIRI_THRESHOLD = 1e-06
 QUATERNION_IDENTITY = (0, 0, 0, 1)
 
 
@@ -278,6 +279,54 @@ def get_all_position_in_interval(frame_dict, begin, end, element='bones'):
     for frame_no in range(1, r):
         result.append(interpolate_position(
             frame_no, frame_dict[begin], frame_dict[end], element))
+    return result
+
+
+def enum_unnecessary_keys(name_dict, key_type='bones', greedy=False):
+    if key_type not in ['bones', 'morphs']:
+        return set()
+
+    is_default = {
+        'bones': lambda p: (
+            p.position == (0, 0, 0) and
+            p.rotation == QUATERNION_IDENTITY if not nejiri else
+            abs(1 - p.rotation[3]) < NEJIRI_THRESHOLD and
+            vmddef.bone_vmdformat_to_controlpoints(p.interpolation) ==
+            vmddef.BONE_LERP_CONTROLPOINTS),
+        'morphs': lambda p: p.weight == 0
+    }
+
+    def is_unnecessary_lazy(sub_frames, key_type):
+        # MMD cuts bone name to 15 bytes when saving to vmd.
+        # This might causes duplicated key frames in vmd.
+        # return (len(sub_frames) == 1 and
+        #        sub_frames[0].frame == 0 and
+        #        is_default[key_type](sub_frames[0]))
+        for frame in sub_frames:
+            if frame.frame != 0 or is_default[key_type](frame) is not True:
+                return False
+        else:
+            return True
+
+    def is_unnecessary_greedy(sub_frames, key_type):
+        # len([f for f in sub_frames if is_default[key_type](f)])
+        #   == len(sub_frames)
+        for frame in sub_frames:
+            if is_default[key_type](frame) is not True:
+                return False
+        else:  # all frames have default value
+            return True
+
+    is_unnecessary = is_unnecessary_greedy if greedy else is_unnecessary_lazy
+    result = set()
+    for key, value in name_dict.items():
+        if len(value) <= 0:
+            result.add(key)
+            continue
+        nejiri = True if key_type == 'bones' and '捩' in key else False
+        if is_unnecessary(value, key_type):
+            result.add(key)
+
     return result
 
 
