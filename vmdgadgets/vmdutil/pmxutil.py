@@ -269,7 +269,7 @@ def make_sub_bone_link_graph(
             if to_bone.flag & pmxdef.BONE_ADD_LOCAL == pmxdef.BONE_ADD_LOCAL:
                 raise Exception('local addition is not supported.')
             if ((to_bone.flag &
-               (pmxdef.BONE_ADD_ROTATE | pmxdef.BONE_ADD_ROTATE) > 0) and
+               (pmxdef.BONE_ADD_ROTATE | pmxdef.BONE_ADD_TRANSLATE) > 0) and
                to_bone.additional_transform.parent not in nodes):
                 parents.add(to_bone.additional_transform.parent)
     if len(parents) > 0:
