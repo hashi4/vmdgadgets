@@ -25,7 +25,8 @@ def make_argumentparser():
     parser = argparse.ArgumentParser()
     parser.add_argument('vmd_a', help='vmd A')
     parser.add_argument('vmd_b', help='vmd B')
-    parser.add_argument('--names', nargs='*',
+    parser.add_argument(
+        '--names', nargs='*',
         help='specify bone or morph names to diff')
     parser.add_argument(
         '-o', metavar='filename', type=argparse.FileType('wb'),
@@ -105,7 +106,7 @@ def diff_noname_frames(frame_dict_a, frame_dict_b, buf=None):
     # frame_dict: {frame: [frame]}
     def insert_result(f, v, d):
         r = d.setdefault('', dict())  # no name
-        r[frame] = v
+        r[f] = v
 
     if buf is None:
         buf = dict()
@@ -133,7 +134,7 @@ def diff_named_frames(
     # index_dict: {name : {frame: index}}
     def insert_result(f, v, d):
         r = d.setdefault(name, dict())
-        r[frame] = v
+        r[f] = v
 
     if buf is None:
         buf = dict()
@@ -178,12 +179,12 @@ def print_summary(key_type, diff_info, args):
                     frame_string = '-' + frame_string
                 elif diff_data == DiffResult.B_ONLY:
                     frame_string = '+' + frame_string
-                l = name_dict.setdefault(name, list())
-                l.append(frame_string)
+                s = name_dict.setdefault(name, list())
+                s.append(frame_string)
 
     for name in sorted(name_dict):
-        l = name_dict[name]
-        print('{}:{}'.format(name, ','.join([i for i in l])))
+        s = name_dict[name]
+        print('{}:{}'.format(name, ','.join([i for i in s])))
     return
 
 
