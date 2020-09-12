@@ -291,6 +291,10 @@ class BoneTransformation():
         for child_bone in descendants:
             self.delete(frame_no, child_bone)
 
+    def clear(self):
+        self.transform_dict = dict()
+        self.ext_transform = None
+
     def get_vmd_frame(self, frame_no, bone_name):
         return self.vmd_motion.get_vmd_frame(frame_no, bone_name)
 

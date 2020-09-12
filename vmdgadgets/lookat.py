@@ -68,13 +68,14 @@ def replace_bonedef_position(bone1, bone2, axis):
 
 
 MotionFrame = namedtuple('MotionFrame', 'frame_no type model_id bone_name')
-# type:
+# flame_type:
 # 'o': key frames of overwrite bones
 # 'b': bones(watcher, target, ext)
 # 'c': camera frames of 'cut'
 # 'v': camera frames
 # 'r': delay
 # 'u': addtional
+# 'i': ignore
 
 
 class LookAt():
@@ -113,6 +114,7 @@ class LookAt():
         }
         self.watcher_extlink = None
         self.ignore_zone = math.radians(140)
+        self.ignore_zone2 = None
         self.global_up = (0, 1, 0)
         self.omega_limit = math.pi / 40
         self.additional_frame_nos = []
@@ -124,6 +126,7 @@ class LookAt():
         self.WATCHER_EX = 2
         self.bone_defs = {}
         self.bone_dict = {}
+        self.ignore_checked = False
 
     def set_target_pos(self, pos):
         self.target_pos = pos
@@ -158,6 +161,9 @@ class LookAt():
 
     def set_ignore_zone(self, zone):
         self.ignore_zone = zone
+
+    def set_ignore_zone2(self, zone):
+        self.ignore_zone2 = zone
 
     def set_constraint(self, bone_name, constraint):
         if bone_name in self.constraints:
@@ -407,6 +413,10 @@ class LookAt():
         elif 'MODEL' == self.target_mode:
             return self.get_target_model_pos(frame_no)
 
+    def check_ignore_case2(self, turn):
+        turn = [abs(t) for t in turn]
+        return turn[0] > self.ignore_zone2[0] or turn[1] > self.ignore_zone2[1]
+
     def check_ignore_case(self, body_dir, look_dir):
         if self.ignore_zone <= 0:
             return False
@@ -480,11 +490,20 @@ class LookAt():
         bone_defs = self.watcher_transform.bone_defs
         bone_name = bone_defs[bone_index].name_jp
         look_dir = vmdutil.sub_v(target_pos, watcher_pos)
-        if self.check_ignore_case(watcher_dir, look_dir):
+
+        if (self.ignore_zone2 is None and
+                self.check_ignore_case(watcher_dir, look_dir)):
             return None
 
         turn = vmdutil.look_at(
             watcher_dir, up, look_dir, self.global_up)
+
+        if self.ignore_checked is True:
+            if 'i' in frame_type:
+                return None
+        elif self.ignore_zone2 is not None and self.check_ignore_case2(turn):
+            return None
+
         if (self.vmd_lerp and
                 bone_index not in self.watcher_transform.leaf_indexes):
             vmd_rot = self.watcher_transform.get_vmd_transform(
@@ -725,6 +744,41 @@ class LookAt():
         else:
             return overwrite_frames
 
+    def check_ignore_frames(self, queue_base):
+        tmp_queue = PriorityQueue()
+        result_queue = PriorityQueue()
+        result_queue.queue = queue_base.queue[:]
+        if len(self.watcher_transform.leaf_indexes) > 1:
+            # TODO:
+            pass
+        for bone_index in self.watcher_transform.leaf_indexes:
+            if bone_index not in self.overwrite_indexes:
+                continue
+            tmp_queue.queue = result_queue.queue[:]
+            while True:
+                motion_frame = tmp_queue.pop()
+                if motion_frame is None:
+                    break
+                frame_no = motion_frame.frame_no
+                frame_type = motion_frame.type
+                while (tmp_queue.top() is not None and
+                        tmp_queue.top().frame_no == frame_no):
+                    dummy = tmp_queue.pop()
+                    frame_type += dummy.type
+                if not self.frame_ranges.is_in_range(frame_no):
+                    continue
+                if 'u' in frame_type:
+                    continue
+                target_pos = self.get_target_pos(frame_no)
+                hrot = self.get_rotation(
+                    frame_no, frame_type, bone_index,
+                    None, None, target_pos)
+                if hrot is None and 'i' not in frame_type:
+                    result_queue.push(MotionFrame(frame_no, 'i', -1, 'IGNORE'))
+        self.ignore_checked = True
+        self.watcher_transform.clear()
+        return result_queue.queue
+
     def look_at_npath(self):
         self.load()
         queue = PriorityQueue()
@@ -734,6 +788,9 @@ class LookAt():
         new_frames = dict()
         bone_defs = self.watcher_transform.bone_defs
         queue_backup = queue.queue
+
+        if self.ignore_zone2 is not None:
+            queue_backup = self.check_ignore_frames(queue)
 
         for bone_index in self.overwrite_indexes:
             bone_name = bone_defs[bone_index].name_jp

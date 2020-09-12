@@ -13,6 +13,9 @@ def make_common_arguments(parser):
         help='''model ignores camera when relative angle is over this.
         If 0 model always tries to look camera. Default = 140 degrees.''')
     parser.add_argument(
+        '--ignore2', nargs=2, metavar=('x', 'y'),
+        help='''Another ignore option''')
+    parser.add_argument(
         '--constraint', nargs=7, action='append',
         metavar=('bone_name', 'x', 'y', 'z', 'scale_x', 'sacle_y', 'scale_z'),
         help='''make constraint to bone rotation. xyz=degrees''')
@@ -81,6 +84,9 @@ def set_common_options(args, l):
     if args.ignore:
         ignore = math.radians(float(args.ignore))
         l.set_ignore_zone(ignore)
+    if args.ignore2:
+        ignore2 = [math.radians(float(p)) for p in args.ignore2]
+        l.set_ignore_zone2(ignore2)
     if args.constraint:
         for con in args.constraint:
             name = con[0]
