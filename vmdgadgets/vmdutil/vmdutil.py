@@ -289,8 +289,8 @@ def enum_unnecessary_keys(name_dict, key_type='bones', greedy=False):
     is_default = {
         'bones': lambda p: (
             p.position == (0, 0, 0) and
-            p.rotation == QUATERNION_IDENTITY if not nejiri else
-            abs(1 - p.rotation[3]) < NEJIRI_THRESHOLD and
+            (p.rotation == QUATERNION_IDENTITY if not nejiri else
+            abs(1 - p.rotation[3]) < NEJIRI_THRESHOLD) and
             vmddef.bone_vmdformat_to_controlpoints(p.interpolation) ==
             vmddef.BONE_LERP_CONTROLPOINTS),
         'morphs': lambda p: p.weight == 0
