@@ -482,7 +482,7 @@ def unpack_bone_ex_parent(header, flag, buf, offset=0):
 
 def pack_bone_ex_parent(header, flag, p):
     if flag & BONE_EXTERNAL_PARENT == BONE_EXTERNAL_PARENT:
-        return struct.pack('<1i', p)
+        return struct.pack('<1i', *p)
     else:
         return bytes()
 
